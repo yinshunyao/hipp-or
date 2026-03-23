@@ -1,0 +1,14 @@
+{
+  "dependencies": {
+    "uni-simple-router": "^2.0.8-beta.3",
+    "uview-plus": "^3.7.13",
+    "uview-ui": "^2.0.34"
+  },
+  "devDependencies": {
+    "eslint": "^8.35.0",
+    "eslint-config-prettier": "^8.7.0",
+    "eslint-plugin-prettier": "^4.2.1",
+    "eslint-plugin-vue": "^9.9.0",
+    "uni-read-pages": "^1.0.5"
+  }
+}

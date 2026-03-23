@@ -1,0 +1,392 @@
+app:
+  description: ''
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  mode: advanced-chat
+  name: 需求收集
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/tongyi:0.1.33@608ec1e7d07dd52e582cff58561a8c75c989951186ffc59452dfffe3d8051230
+kind: app
+version: 0.4.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        image_file_size_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        sourceType: start
+        targetType: llm
+      id: 1774232595122-llm
+      source: '1774232595122'
+      sourceHandle: source
+      target: llm
+      targetHandle: target
+      type: custom
+    - data:
+        isInLoop: false
+        sourceType: llm
+        targetType: if-else
+      id: llm-source-1774235892748-target
+      source: llm
+      sourceHandle: source
+      target: '1774235892748'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: llm
+      id: 1774235892748-true-1774234357248-target
+      source: '1774235892748'
+      sourceHandle: 'true'
+      target: '1774234357248'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: answer
+      id: 1774235892748-false-answer-target
+      selected: false
+      source: '1774235892748'
+      sourceHandle: 'false'
+      target: answer
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: llm
+        targetType: answer
+      id: 1774234357248-source-1774236200014-target
+      source: '1774234357248'
+      sourceHandle: source
+      target: '1774236200014'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        desc: ''
+        selected: false
+        title: 开始
+        type: start
+        variables: []
+      height: 54
+      id: '1774232595122'
+      position:
+        x: -192.28078073533678
+        y: 131.9636230415489
+      positionAbsolute:
+        x: -192.28078073533678
+        y: 131.9636230415489
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        memory:
+          query_prompt_template: '{{#sys.query#}}
+
+
+            {{#sys.files#}}'
+          role_prefix:
+            assistant: ''
+            user: ''
+          window:
+            enabled: false
+            size: 10
+        model:
+          completion_params:
+            response_format: json_object
+          mode: chat
+          name: qwen3.5-plus
+          provider: langgenius/tongyi/tongyi
+        prompt_template:
+        - id: cfdc3abf-dfe0-41a9-8b23-ecf9116c4756
+          role: system
+          text: "# 需求总结提示词\n```markdown\n你是一个专业的软件需求分析师。请通过多轮对话，逐步收集用户需求。\n# 对话要求\n\
+            ## 先倾听用户的需求，按照如下维度总结\n1. 您想解决什么业务问题？ 归纳到 business_goal\n2. 目标用户是谁？ 归纳到\
+            \ target_users\n3. 包含哪些功能？ 归纳到 core_features，是一个列表，每条是功能描述\n- 需要梳理分类，不要根据客户零散的信息，每个消息梳理1个功能\n\
+            - 可以适当听取参考用户的意见\n4. 需要哪些平台（小程序/Web/APP）？ 放到 platforms\n5. 是否需要上线，如果要上线有上线时间要求？\
+            \ 放到 timeline\n- 注意可能是x周，或者x天，单位也保存\n- 不要强制追问这个问题，用户可能不清楚\n6. 有明确的预算么？\
+            \ 放到budget\n- 不需要强制追问给一个准确的数字，可以是一个范围，如果用户确实不清楚待评估也可以\n- 单位可能是千，万，需要保存准确，也可能不清楚\n\
+            \n## 当总结未完成时\n1. 如果客户当前描述无法理解，请对应提出问题\n2. 如果理解，需要组织答复客户\n- 需要包含 \"收到\"\
+            \ 或者 \"我明白了\" 之类的响应\n- 顺带提醒客户提供当前维度，或者其他维度的一些信息\n    - 提醒不要一次反馈太多问题，也不需要太正式，就随口问1个问题让客户回答即可\n\
+            3. 设置 finish 为 false\n\n## 当总结完成时\n1. 询问客户是否已经描述完成所有信息\n- 如果已经完成，进行总结\n\
+            \  - 设置 finish 为 true\n  - 总结 info  所有信息\n- 如果还未完成，提示用户补充\n  - 设置 finish\
+            \ 为 false\n\n# 追问确认处理\n追问确认都放到info中，字符串形式\n\n\n# 信息总结格式\n用以下JSON格式输出每次对话总结：\n\
+            {\n  \"finish\": false,\n  \"info\": \n    { \"business_goal\": \"...\"\
+            ,\n      \"target_users\": \"...\",\n      \"core_features\": [\"...\"\
+            , \"...\"],\n      \"platforms\": [\"...\"],\n      \"timeline\": \"8周\"\
+            ,\n      \"budget\":  \"\"\n    }\n}\n```\n\n\n# 问题范例\n## Q1 英语教育平台\n\
+            ```text\n# 每行一句话\n我想做一个英语教育平台，包含管理端和教学端，管理端只需要web平台，教学端是进行教学时老师和学生使用，需要支持web/苹果和安卓的平板\n\
+            管理端需要支持下属机构接入，对学生、老师、课程等进行管理，支持老师的薪酬管理，替换我现有的管理平台，现有的教学是基于腾讯会议。\n教学端不需要白板，课件比较简单，英语阅读，生词本和完型填空等，管理端会有按照不同等级课程和课时数来计算。\n\
+            目标用户主要是机构，老师和学生。\n我希望2个月内上线\n```"
+        selected: false
+        structured_output:
+          schema:
+            additionalProperties: false
+            properties:
+              finish:
+                description: 是否完成需求收集
+                type: boolean
+              info:
+                description: 具体信息
+                type: string
+            required:
+            - finish
+            type: object
+        structured_output_enabled: true
+        title: 需求收集
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 90
+      id: llm
+      position:
+        x: 108.59170019669779
+        y: -43.27286566037952
+      positionAbsolute:
+        x: 108.59170019669779
+        y: -43.27286566037952
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        answer: '{{#llm.structured_output.info#}}'
+        desc: ''
+        selected: false
+        title: 追问沟通
+        type: answer
+        variables: []
+      height: 105
+      id: answer
+      position:
+        x: 927
+        y: 282
+      positionAbsolute:
+        x: 927
+        y: 282
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: qwen3.5-plus
+          provider: langgenius/tongyi/tongyi
+        prompt_template:
+        - id: da069b85-e39e-4cb3-b816-468ae0df9bf8
+          role: system
+          text: '# 背景
+
+            你是一个高级架构师，擅长架构和前后端开发，同时非常熟练的使用AI编程，现在有客户需求，需要进行大概的设计
+
+
+            # 目标
+
+            现在已经形成初步的需求调查表 {{#llm.structured_output.info#}} ，需要形成方案和报价
+
+            1. 形成 <完整功能范围>
+
+            - 根据整体需求来划分模块，模块名称简洁易懂，符合用户描述
+
+            - 需要包括 模块 和 对应的功能点
+
+            - 采用表格形式展示即可
+
+            - 功能点描述简单，例如： 教师排课、学生预约
+
+            2. 形成 <功能模块工作量评估>
+
+            - 按照模块和功能来评估，包括需要的角色，人天（工作量）、单价和总预算
+
+            3. 形成 <风险评估与应对>
+
+            - 包括 风险项、影响程度 和 应对策略
+
+            4. 形成 <关键里程碑建议>
+
+            - 包括 周次、 里程碑 和 交付物
+
+            5. 形成 <最终结论>
+
+            参照如下格式
+
+
+            | 项目 | 数值                  |
+
+            |:---|:--------------------|
+
+            | **技术方案** | 后端XXXX / 前端XXX      |
+
+            | **开发人力** | 1 名全栈高级工程师          |
+
+            | **总工时** | XXX 人天              |
+
+            | **总预算** | **XXX 万元**          |
+
+            | **交付周期** | **XXX 周**（一次性全功能交付） |
+
+
+
+
+            # 要求
+
+            1. 不要太限定前后端技术栈，可以适当利用相近的开源项目二开（开源项目基于MIT协议）
+
+            2. 不要设计太细，方案是用来大致评估需要的人力角色、人天、风险以及预算的
+
+            3. 人力需要考虑高级、中级和初级，结合人天，形成预算结果
+
+            - 如果客户有预算，特别是预算差别较大时，可以对照提供解释，注意语气温和诚恳
+
+            - 做预算时考虑一定的冗余，叠加到各个模块，不要回答直接呈现给客户了
+
+            4. 根据项目模式，自行选择敏捷还是瀑布模式
+
+            5. 客户提供的项目Deadline，不一定完全遵从，需要按照实际可行的时间来
+
+            - 假定开发者没有技术瓶颈
+
+            '
+        selected: true
+        title: 方案设计
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 90
+      id: '1774234357248'
+      position:
+        x: 529.3879115950087
+        y: -104.19555500567188
+      positionAbsolute:
+        x: 529.3879115950087
+        y: -104.19555500567188
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: is
+            id: adff1479-73f0-408f-9b68-7270ce313224
+            value: true
+            varType: boolean
+            variable_selector:
+            - llm
+            - structured_output
+            - finish
+          id: 'true'
+          logical_operator: and
+        desc: ''
+        selected: false
+        title: 条件分支
+        type: if-else
+      height: 126
+      id: '1774235892748'
+      position:
+        x: 389.40861732334446
+        y: 98.86357732224371
+      positionAbsolute:
+        x: 389.40861732334446
+        y: 98.86357732224371
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        answer: '{{#1774234357248.text#}}'
+        desc: ''
+        selected: false
+        title: 最终答复
+        type: answer
+        variables: []
+      height: 105
+      id: '1774236200014'
+      position:
+        x: 887.812665684006
+        y: -55.94934147571585
+      positionAbsolute:
+        x: 887.812665684006
+        y: -55.94934147571585
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    viewport:
+      x: -221.31313073222827
+      y: 453.98308320492447
+      zoom: 0.8648268737456184
