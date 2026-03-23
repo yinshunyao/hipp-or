@@ -1,7 +1,7 @@
 {
-    "name" : "kinit-uni",
+    "name" : "hipp-uni",
     "appid" : "__UNI__0B9B4CB",
-    "description" : "",
+    "description" : "hipp需求分析师",
     "versionName" : "1.0.0",
     "versionCode" : "100",
     "transformPx" : false,
@@ -61,5 +61,7 @@
             "mode" : "hash",
             "base" : "./"
         }
-    }
+    },
+    "locale" : "zh-Hans",
+    "fallbackLocale" : "zh-Hans"
 }

@@ -1,5 +1,11 @@
+# 下载代码
+```shell
+git clone https://github.com/yinshunyao/hipp-or.git
+```
 
 # 使用
+
+cd hipp-or/hipp-api/
 
 ## 环境配置
 参见文档 "hipp-api/.env.example"，启动后端程序需要复制 .env.example 为 .env，并修改相关配置
@@ -11,6 +17,26 @@
 ./run.sh
 # 指定python
 PYTHON=/usr/local/bin/python3 ./run.sh
+```
+
+## 配置到supervisor
+```shell
+# /home/hipp-or/hipp-api
+[program:hipp-api]
+directory=/home/hipp-or/hipp-api
+command=/home/hipp-or/hipp-api/run.sh
+environment=PYHTON="/usr/bin/python3"
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+priority=10
+user=root
+redirect_stderr=true
+startretries=99999
+stdout_logfile=%(here)s/../log/%(program_name)s.std
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=50
 ```
 
 # 开发者功能

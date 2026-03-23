@@ -10,6 +10,9 @@
 #
 # venv 的版本 = 用于执行「python -m venv」的那条解释器，不会自动跟「你以为的系统 python」对齐。
 # macOS 上 /usr/bin/python3 多为 Apple 自带的 3.9，与 PATH 里的 Homebrew python3 不是同一个；勿混用。
+#
+# Debian/Ubuntu：仅有 python3.10 可执行文件不等于能建 venv，须安装 python3.10-venv（或 python3-venv）。
+# 若 .venv 已存在但 python 报错，先 apt 安装对应包后执行: rm -rf .venv && ./run.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -57,6 +60,72 @@ resolve_base_python() {
 }
 
 PY="$(resolve_base_python)"
+
+# 从 $PY 解析主.次版本，用于 Debian/Ubuntu 上提示 pythonX.Y-venv 包名
+py_minor_version() {
+  "$PY" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo ""
+}
+
+# 创建 venv 前：确保解释器带 venv 模块（否则 -m venv 失败或产生不可用环境）
+ensure_python_has_venv_module() {
+  if "$PY" -c "import venv" 2>/dev/null; then
+    return 0
+  fi
+  local ver
+  ver="$(py_minor_version)"
+  echo "[run.sh] 当前 Python ($PY) 未包含 venv 模块，无法创建虚拟环境。" >&2
+  echo "[run.sh] 在 Debian/Ubuntu 上请安装（版本号需与 python 一致）：" >&2
+  if [[ -n "$ver" ]]; then
+    echo "  sudo apt update && sudo apt install -y python${ver}-venv" >&2
+  else
+    echo "  sudo apt update && sudo apt install -y python3-venv" >&2
+  fi
+  echo "  （或通用包: sudo apt install -y python3-venv）" >&2
+  echo "[run.sh] 安装后请重新执行: $ROOT/run.sh" >&2
+  exit 1
+}
+
+# 已存在 .venv 时：任选 bin 下可执行的 python* 做一次 import sys，失败则提示重建
+find_working_venv_python() {
+  local f
+  for f in "$VENV/bin/python" "$VENV/bin/python3"; do
+    if [[ -x "$f" ]] && "$f" -c "import sys" 2>/dev/null; then
+      printf '%s\n' "$f"
+      return 0
+    fi
+  done
+  local _nullglob_was=
+  if shopt -q nullglob; then _nullglob_was=1; else shopt -s nullglob; fi
+  for f in "$VENV/bin"/python3.*; do
+    if [[ -x "$f" ]] && "$f" -c "import sys" 2>/dev/null; then
+      [[ -z "${_nullglob_was:-}" ]] && shopt -u nullglob
+      printf '%s\n' "$f"
+      return 0
+    fi
+  done
+  [[ -z "${_nullglob_was:-}" ]] && shopt -u nullglob
+  return 1
+}
+
+ensure_existing_venv_usable() {
+  if [[ ! -d "$VENV" ]]; then
+    return 0
+  fi
+  if find_working_venv_python &>/dev/null; then
+    return 0
+  fi
+  local ver
+  ver="$(py_minor_version)"
+  echo "[run.sh] 虚拟环境不可用: $VENV 下的 python 无法运行（常见于未装 python*-venv 时创建失败，或从其他机器拷贝了 .venv）。" >&2
+  if [[ -n "$ver" ]]; then
+    echo "[run.sh] 在 Debian/Ubuntu 上请先安装: sudo apt install -y python${ver}-venv  或  python3-venv" >&2
+  else
+    echo "[run.sh] 在 Debian/Ubuntu 上请先安装: sudo apt install -y python3-venv" >&2
+  fi
+  echo "[run.sh] 然后删除并重建虚拟环境：" >&2
+  echo "  rm -rf \"$VENV\" && cd \"$ROOT\" && ./run.sh" >&2
+  exit 1
+}
 
 ensure_asyncmy() {
   local err
@@ -169,9 +238,18 @@ ensure_db_schema_before_run() {
 }
 
 bootstrap() {
+  ensure_python_has_venv_module
   echo "[run.sh] 使用解释器创建虚拟环境: $PY ($("$PY" -V 2>&1))"
   echo "[run.sh] 创建虚拟环境: $VENV"
-  "$PY" -m venv "$VENV"
+  if ! "$PY" -m venv "$VENV"; then
+    echo "[run.sh] 创建虚拟环境失败。若在 Debian/Ubuntu，请安装: sudo apt install -y python3-venv" >&2
+    local pv
+    pv="$(py_minor_version)"
+    if [[ -n "$pv" ]]; then
+      echo "[run.sh] 或与当前解释器版本一致: sudo apt install -y python${pv}-venv" >&2
+    fi
+    exit 1
+  fi
   # shellcheck source=/dev/null
   source "$VENV/bin/activate"
   python -m pip install --upgrade pip setuptools wheel
@@ -187,6 +265,7 @@ bootstrap() {
 if [[ ! -d "$VENV" ]]; then
   bootstrap
 else
+  ensure_existing_venv_usable
   # shellcheck source=/dev/null
   source "$VENV/bin/activate"
   ensure_asyncmy
