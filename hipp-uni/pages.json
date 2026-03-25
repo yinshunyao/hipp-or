@@ -2,169 +2,256 @@
 	"easycom": {
 		"^u-(.*)": "uview-ui/components/u-$1/u-$1.vue"
 	},
-  "pages": [
+	"pages": [
 		{
-      "path": "pages/login/login",
-		  "meta":{
-			  "loginAuth": false
-		  },
-      "style": {
-        "navigationBarTitleText": "登录"
-      }
-		}, {
+			"path": "pages/login/login",
+			"meta": {
+				"loginAuth": false
+			},
+			"style": {
+				"navigationBarTitleText": "登录"
+			}
+		},
+		{
 			"path": "pages/chat/index",
 			"meta": {
 				"loginAuth": true
 			},
 			"style": {
 				"navigationBarTitleText": "对话",
-				"enablePullDownRefresh": true
+				"enablePullDownRefresh": true,
+				"usingComponents": {
+					"van-search": "/static/wxcomponents/vant-weapp/search/index"
+				}
 			}
-		}, {
-			"path": "pages/index",
-			"meta":{
+		},
+		{
+			"path": "pages/requirement/index",
+			"meta": {
 				"loginAuth": true
 			},
 			"style": {
-				"navigationBarTitleText": "Kinit 移动端框架"
+				"navigationBarTitleText": "需求",
+				"enablePullDownRefresh": true,
+				"usingComponents": {
+					"van-notice-bar": "/static/wxcomponents/vant-weapp/notice-bar/index"
+				}
 			}
-		}, {
-			"path": "pages/work/index",
-			"meta":{
+		},
+		{
+			"path": "pages/business/index",
+			"meta": {
 				"loginAuth": true
 			},
 			"style": {
-				"navigationBarTitleText": "工作台"
+				"navigationBarTitleText": "商业",
+				"enablePullDownRefresh": true,
+				"usingComponents": {
+					"van-notice-bar": "/static/wxcomponents/vant-weapp/notice-bar/index"
+				}
 			}
-		}, {
+		},
+		{
 			"path": "pages/mine/index",
-			"meta":{
+			"meta": {
 				"loginAuth": true
 			},
 			"style": {
 				"navigationBarTitleText": "我的"
 			}
-		}, {
-			"path": "pages/mine/avatar/index",
-			"meta":{
-				"loginAuth": true
-			},
-			"style": {
-				"navigationBarTitleText": "修改头像"
-			}
-		}, {
-			"path": "pages/mine/info/index",
-			"meta":{
-				"loginAuth": true
-			},
-			"style": {
-				"navigationBarTitleText": "个人信息"
-			}
-		}, {
-			"path": "pages/mine/info/edit",
-			"meta":{
-				"loginAuth": true
-			},
-			"style": {
-				"navigationBarTitleText": "编辑资料"
-			}
-		}, {
-			"path": "pages/mine/pwd/index",
-			"meta":{
-				"loginAuth": true
-			},
-			"style": {
-				"navigationBarTitleText": "修改密码"
-			}
-		}, {
-			"path": "pages/mine/setting/index",
-			"meta":{
-				"loginAuth": true
-			},
-			"style": {
-				"navigationBarTitleText": "应用设置"
-			}
-		}, {
-			"path": "pages/mine/help/issue/index",
-			"meta":{
-				"loginAuth": true
-			},
-			"style": {
-				"navigationBarTitleText": "常见问题"
-			}
-		}, {
-			"path": "pages/mine/help/issue/info",
-			"meta":{
-				"loginAuth": true
-			},
-			"style": {
-				"navigationBarTitleText": "常见问题详情"
-			}
-		}, {
-			"path": "pages/mine/about/index",
-			"meta":{
-				"loginAuth": true
-			},
-			"style": {
-				"navigationBarTitleText": "关于我们"
-			}
-		}, {
-			"path": "pages/common/webview/index",
-			"meta":{
-				"loginAuth": false
-			},
-			"style": {
-				"navigationBarTitleText": "浏览网页"
-			}
-		}, {
-			"path": "pages/common/textview/index",
-			"meta":{
-				"loginAuth": false
-			},
-			"style": {
-				"navigationBarTitleText": "浏览文本"
-			}
-		},
-		{
-			"path": "pages/chat/chat",
-			"meta": {
-				"loginAuth": true
-			},
-			"style": {
-				"navigationBarTitleText": "对话"
-			}
 		}
 	],
-  "tabBar": {
-    "color": "#000000",
-    "selectedColor": "#000000",
-    "borderStyle": "white",
-    "backgroundColor": "#ffffff",
-    "list": [{
-        "pagePath": "pages/chat/index",
-        "iconPath": "static/images/tabbar/home.png",
-        "selectedIconPath": "static/images/tabbar/home_.png",
-        "text": "对话"
-      }, {
-        "pagePath": "pages/work/index",
-        "iconPath": "static/images/tabbar/work.png",
-        "selectedIconPath": "static/images/tabbar/work_.png",
-        "text": "工作台"
-      }, {
-        "pagePath": "pages/mine/index",
-        "iconPath": "static/images/tabbar/mine.png",
-        "selectedIconPath": "static/images/tabbar/mine_.png",
-        "text": "我的"
-      }
-    ]
-  },
-  "globalStyle": {
-  	"navigationBarTextStyle": "black",
-  	"navigationBarTitleText": "Kinit",
-  	"navigationBarBackgroundColor": "#F8F8F8",
-  	"backgroundColor": "#F8F8F8",
-		"app-plus":{
+	"subPackages": [
+		{
+			"root": "subpkg/home",
+			"pages": [
+				{
+					"path": "index",
+					"meta": {
+						"loginAuth": true
+					},
+					"style": {
+						"navigationBarTitleText": "Kinit 移动端框架"
+					}
+				}
+			]
+		},
+		{
+			"root": "subpkg/mine",
+			"pages": [
+				{
+					"path": "avatar/index",
+					"meta": {
+						"loginAuth": true
+					},
+					"style": {
+						"navigationBarTitleText": "修改头像"
+					}
+				},
+				{
+					"path": "info/index",
+					"meta": {
+						"loginAuth": true
+					},
+					"style": {
+						"navigationBarTitleText": "个人信息"
+					}
+				},
+				{
+					"path": "info/edit",
+					"meta": {
+						"loginAuth": true
+					},
+					"style": {
+						"navigationBarTitleText": "编辑资料"
+					}
+				},
+				{
+					"path": "pwd/index",
+					"meta": {
+						"loginAuth": true
+					},
+					"style": {
+						"navigationBarTitleText": "修改密码"
+					}
+				},
+				{
+					"path": "setting/index",
+					"meta": {
+						"loginAuth": true
+					},
+					"style": {
+						"navigationBarTitleText": "应用设置"
+					}
+				},
+				{
+					"path": "help/issue/index",
+					"meta": {
+						"loginAuth": true
+					},
+					"style": {
+						"navigationBarTitleText": "常见问题"
+					}
+				},
+				{
+					"path": "help/issue/info",
+					"meta": {
+						"loginAuth": true
+					},
+					"style": {
+						"navigationBarTitleText": "常见问题详情"
+					}
+				},
+				{
+					"path": "about/index",
+					"meta": {
+						"loginAuth": true
+					},
+					"style": {
+						"navigationBarTitleText": "关于我们"
+					}
+				}
+			]
+		},
+		{
+			"root": "subpkg/common",
+			"pages": [
+				{
+					"path": "webview/index",
+					"meta": {
+						"loginAuth": false
+					},
+					"style": {
+						"navigationBarTitleText": "浏览网页"
+					}
+				},
+				{
+					"path": "textview/index",
+					"meta": {
+						"loginAuth": false
+					},
+					"style": {
+						"navigationBarTitleText": "浏览文本"
+					}
+				}
+			]
+		},
+		{
+			"root": "subpkg/chat",
+			"pages": [
+				{
+					"path": "chat",
+					"meta": {
+						"loginAuth": true
+					},
+					"style": {
+						"navigationBarTitleText": "对话",
+						"usingComponents": {
+							"van-notice-bar": "/static/wxcomponents/vant-weapp/notice-bar/index"
+						}
+					}
+				},
+				{
+					"path": "staff-inbox",
+					"meta": {
+						"loginAuth": true
+					},
+					"style": {
+						"navigationBarTitleText": "客服接待",
+						"enablePullDownRefresh": true,
+						"usingComponents": {
+							"van-search": "/static/wxcomponents/vant-weapp/search/index"
+						}
+					}
+				}
+			]
+		}
+	],
+	"preloadRule": {
+		"pages/mine/index": {
+			"network": "all",
+			"packages": ["subpkg/mine"]
+		}
+	},
+	"tabBar": {
+		"color": "#A8A29E",
+		"selectedColor": "#C47F0A",
+		"borderStyle": "white",
+		"backgroundColor": "#FFFFFF",
+		"list": [
+			{
+				"pagePath": "pages/chat/index",
+				"iconPath": "static/images/tabbar/conversation.png",
+				"selectedIconPath": "static/images/tabbar/home_.png",
+				"text": "对话"
+			},
+			{
+				"pagePath": "pages/requirement/index",
+				"iconPath": "static/images/tabbar/home.png",
+				"selectedIconPath": "static/images/tabbar/home_.png",
+				"text": "需求"
+			},
+			{
+				"pagePath": "pages/business/index",
+				"iconPath": "static/images/tabbar/home.png",
+				"selectedIconPath": "static/images/tabbar/home_.png",
+				"text": "商业"
+			},
+			{
+				"pagePath": "pages/mine/index",
+				"iconPath": "static/images/tabbar/mine.png",
+				"selectedIconPath": "static/images/tabbar/mine_.png",
+				"text": "我的"
+			}
+		]
+	},
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "Kinit",
+		"navigationBarBackgroundColor": "#FFFFFF",
+		"backgroundColor": "#F5F3EE",
+		"app-plus": {
 			"titleNView": false
 		}
-  }
+	}
 }

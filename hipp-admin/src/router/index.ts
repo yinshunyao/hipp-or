@@ -137,21 +137,22 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
     ]
   },
   {
-    path: '/agent',
+    path: '/mp-staff',
     component: Layout,
-    name: 'Agent',
+    name: 'MpStaff',
     meta: {
-      title: '智能客服',
-      icon: 'ep:chat-dot-round',
+      title: '人工客服',
+      icon: 'ant-design:customer-service-outlined',
       alwaysShow: true
     },
     children: [
       {
-        path: 'manager',
-        component: () => import('@/views/Vadmin/AgentManager/AgentManager.vue'),
-        name: 'AgentManager',
+        path: 'chat-workbench',
+        component: () => import('@/views/MpStaff/ChatWorkbench.vue'),
+        name: 'MpStaffChatWorkbench',
         meta: {
-          title: '智能客服管理'
+          title: '客服工作台',
+          noCache: true
         }
       }
     ]

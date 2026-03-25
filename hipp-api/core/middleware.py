@@ -24,10 +24,28 @@ from apps.vadmin.record.crud import OperationRecordDal, OperationRecordSqlDal
 from core.database import mongo_getter, session_factory
 from utils import status
 
+# 与 vadmin_record_operation.content_length String(32) 一致
+_MAX_CONTENT_LENGTH_STR = 32
+
+
+def _safe_response_content_length(response: Response) -> str | None:
+    """
+    取响应 Content-Length（字节数），勿用 raw_headers[0]：顺序不固定，
+    文件下载等场景首条可能是 Content-Disposition，会误写入导致 Data too long。
+    """
+    raw = response.headers.get("content-length")
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if len(s) > _MAX_CONTENT_LENGTH_STR:
+        return s[:_MAX_CONTENT_LENGTH_STR]
+    return s
+
 
 def write_request_log(request: Request, response: Response):
     http_version = f"http/{request.scope['http_version']}"
-    content_length = response.raw_headers[0][1]
+    cl = _safe_response_content_length(response)
+    content_length = cl if cl is not None else ""
     process_time = response.headers["X-Process-Time"]
     content = f"basehttp.log_message: '{request.method} {request.url} {http_version}' {response.status_code}" \
               f"{response.charset} {content_length} {process_time}"
@@ -90,7 +108,7 @@ def register_operation_record_middleware(app: FastAPI):
             "query_params": query_params if query_params else None,
             "path_params": path_params if path_params else None,
         }
-        content_length = response.raw_headers[0][1]
+        content_length = _safe_response_content_length(response)
         assert isinstance(route, APIRoute)
         document = {
             "process_time": process_time,

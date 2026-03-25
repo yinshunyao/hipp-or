@@ -34,12 +34,70 @@ MOCK_SITE_RESPONSE = {
     "use_icon_as_answer_icon": False
 }
 
+@pytest.mark.asyncio
+async def test_test_connection_icon_url_wins_over_icon():
+    mock_db = AsyncMock()
+    dal = AgentDal(mock_db)
+    agent_obj = _make_agent_obj()
+
+    dal.get_data = AsyncMock(return_value=agent_obj)
+    dal.flush = AsyncMock(return_value=agent_obj)
+
+    info_resp = MagicMock()
+    info_resp.json.return_value = MOCK_INFO_RESPONSE
+    info_resp.raise_for_status = MagicMock()
+
+    site_resp = MagicMock()
+    site_data = dict(MOCK_SITE_RESPONSE)
+    site_data["icon_url"] = "http://cdn.example.com/a.png"
+    site_data["icon_type"] = "emoji"
+    site_data["icon"] = "😄"
+    site_data["icon_background"] = "#FFEAD5"
+    site_resp.json.return_value = site_data
+    site_resp.raise_for_status = MagicMock()
+
+    async def mock_get(url, **kwargs):
+        u = str(url)
+        if "/v1/info" in u:
+            return info_resp
+        if "/v1/site" in u:
+            return site_resp
+        raise ValueError(f"Unexpected URL: {url}")
+
+    with patch("apps.vadmin.agent_manager.crud.httpx.AsyncClient") as MockClient:
+        client_instance = AsyncMock()
+        client_instance.get = mock_get
+        client_instance.__aenter__ = AsyncMock(return_value=client_instance)
+        client_instance.__aexit__ = AsyncMock(return_value=False)
+        MockClient.return_value = client_instance
+
+        dal.schema = MagicMock()
+        dal.schema.model_validate.return_value = MagicMock(
+            model_dump=MagicMock(
+                return_value={"id": 1, "icon_url": "http://cdn.example.com/a.png", "is_tested": True}
+            )
+        )
+
+        await dal.test_connection(
+            api_server="http://localhost/v1",
+            app_key="test-key-123",
+            remark="测试备注",
+            data_id=1,
+            service_type="需求分析",
+        )
+
+    assert agent_obj.icon_type == "image"
+    assert agent_obj.icon_url == "http://cdn.example.com/a.png"
+    assert agent_obj.icon is None
+    assert agent_obj.icon_background is None
+
 
 def _make_agent_obj(**overrides):
     defaults = dict(
         id=1,
         api_server="http://localhost/v1",
         app_key="test-key-123",
+        service_type=None,
         remark="测试备注",
         name=None,
         description=None,
@@ -79,9 +137,10 @@ async def test_test_connection_success():
     site_resp.raise_for_status = MagicMock()
 
     async def mock_get(url, **kwargs):
-        if "/v1/info" in url:
+        u = str(url)
+        if "/v1/info" in u:
             return info_resp
-        elif "/v1/site" in url:
+        if "/v1/site" in u:
             return site_resp
         raise ValueError(f"Unexpected URL: {url}")
 
@@ -102,6 +161,7 @@ async def test_test_connection_success():
             app_key="test-key-123",
             remark="测试备注",
             data_id=1,
+            service_type="需求分析",
         )
 
     assert agent_obj.name == "测试客服"
@@ -111,6 +171,7 @@ async def test_test_connection_success():
     assert agent_obj.icon == "😄"
     assert agent_obj.icon_background == "#FFEAD5"
     assert agent_obj.is_tested is True
+    assert agent_obj.service_type == "需求分析"
 
 
 @pytest.mark.asyncio
@@ -140,6 +201,7 @@ async def test_test_connection_http_error():
                 app_key="test-key-123",
                 remark=None,
                 data_id=1,
+                service_type=None,
             )
 
 
@@ -166,7 +228,48 @@ async def test_test_connection_network_error():
                 app_key="test-key-123",
                 remark=None,
                 data_id=1,
+                service_type=None,
             )
+
+
+@pytest.mark.asyncio
+async def test_test_connection_no_id_echoes_service_type():
+    mock_db = AsyncMock()
+    dal = AgentDal(mock_db)
+
+    info_resp = MagicMock()
+    info_resp.json.return_value = MOCK_INFO_RESPONSE
+    info_resp.raise_for_status = MagicMock()
+
+    site_resp = MagicMock()
+    site_resp.json.return_value = MOCK_SITE_RESPONSE
+    site_resp.raise_for_status = MagicMock()
+
+    async def mock_get(url, **kwargs):
+        if "/v1/info" in str(url):
+            return info_resp
+        if "/v1/site" in str(url):
+            return site_resp
+        raise ValueError(f"Unexpected URL: {url}")
+
+    with patch("apps.vadmin.agent_manager.crud.httpx.AsyncClient") as MockClient:
+        client_instance = AsyncMock()
+        client_instance.get = mock_get
+        client_instance.__aenter__ = AsyncMock(return_value=client_instance)
+        client_instance.__aexit__ = AsyncMock(return_value=False)
+        MockClient.return_value = client_instance
+
+        result = await dal.test_connection(
+            api_server="http://localhost/v1",
+            app_key="test-key-123",
+            remark=None,
+            data_id=None,
+            service_type="  商业评估  ",
+        )
+
+    assert result["id"] is None
+    assert result["service_type"] == "商业评估"
+    assert result["is_tested"] is True
 
 
 @pytest.mark.asyncio

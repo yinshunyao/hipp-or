@@ -21,6 +21,10 @@ const getters = {
   siteUrl: (state) => state.app.siteUrl,
   WXEmail: (state) => state.app.WXEmail,
   WXPhone: (state) => state.app.WXPhone,
-  dictObj: (state) => state.dict.dictObj
+  dictObj: (state) => state.dict.dictObj,
+
+  themeMode: (state) => state.theme.mode,
+  themeIsDark: (state) => state.theme.mode === 'dark',
+  themeColors: (state, getters) => getters['theme/colors']
 }
 export default getters

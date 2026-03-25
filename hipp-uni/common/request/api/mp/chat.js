@@ -2,14 +2,50 @@ import config from '@/config.js'
 import { getToken } from '@/common/utils/auth.js'
 import request from '@/common/request/request.js'
 
-/** 收件箱（会话 + 未开聊智能体） */
+/** 收件箱；对话 Tab 传 kind=session 仅已归档会话行，不含智能体入口行 */
 export function getChatInbox(q) {
-  return request.get('/mp/chat/inbox', { params: { q: q || undefined } })
+  return request.get('/mp/chat/inbox', {
+    params: { q: q || undefined, kind: 'session' }
+  })
+}
+
+/** 人工客服收件箱（分配给我的会话） */
+export function getStaffChatInbox(q) {
+  return request.get('/mp/chat/inbox', {
+    params: { q: q || undefined, kind: 'staff' }
+  })
+}
+
+/**
+ * 某智能体下已归档话题分页（时间正序片段：页内旧→新，页尾靠近当前会话）
+ * @param {number} agentId
+ * @param {{ limit?: number, before_update_ts?: number, before_session_id?: number }} params
+ */
+export function getArchivedTopics(agentId, params = {}) {
+  const q = { limit: params.limit || 20 }
+  if (params.before_update_ts != null && params.before_session_id != null) {
+    q.before_update_ts = params.before_update_ts
+    q.before_session_id = params.before_session_id
+  }
+  return request.get(`/mp/chat/agents/${agentId}/archived-topics`, { params: q })
 }
 
 /** 创建会话 */
 export function createChatSession(agentId) {
   return request.post('/mp/chat/sessions', { agent_id: agentId })
+}
+
+/**
+ * 场景页解析可服务智能体（按类型随机 1 个，后端可选返回进行中会话）
+ * @param {'requirement'|'business'} scene
+ */
+export function resolveSceneAgent(scene) {
+  return request.get('/mp/chat/scene-agent', { params: { scene } })
+}
+
+/** 从已归档话题发起人工客服（创建或复用会话） */
+export function createHumanSupportSession(sourceSessionId) {
+  return request.post('/mp/chat/human-support/sessions', { source_session_id: sourceSessionId })
 }
 
 /** 会话详情 */
@@ -44,11 +80,13 @@ export function sendChatMessage(sessionId, query) {
 }
 
 /**
- * Dify SSE 增量解析：将分片拼入行缓冲，对完整行解析 `data:` JSON，累积 assistant 文本。
+ * Dify SSE 增量解析：将分片拼入行缓冲，对完整行解析 `data:` JSON，累积 assistant 文本；
+ * 识别服务端扩展事件 `mp_topic`（话题归档）。
  */
 export function createDifySseTextAccumulator() {
   let lineBuf = ''
   let fullText = ''
+  let topicClosed = false
   function consumeLine(line) {
     const s = line.replace(/\r$/, '')
     if (!s.startsWith('data:')) return
@@ -56,6 +94,10 @@ export function createDifySseTextAccumulator() {
     if (raw === '[DONE]') return
     try {
       const obj = JSON.parse(raw)
+      if (obj.event === 'mp_topic') {
+        topicClosed = !!obj.topic_closed
+        return
+      }
       if (
         (obj.event === 'message' || obj.event === 'agent_message') &&
         typeof obj.answer === 'string' &&
@@ -84,6 +126,9 @@ export function createDifySseTextAccumulator() {
         lineBuf = ''
       }
       return fullText
+    },
+    getTopicClosed() {
+      return topicClosed
     }
   }
 }
@@ -95,7 +140,7 @@ export function createDifySseTextAccumulator() {
  * @param {number} sessionId
  * @param {string} query
  * @param {(fullText: string) => void} onDelta
- * @returns {Promise<boolean>} true 表示流式完成
+ * @returns {Promise<{ topicClosed: boolean }>} 流式完成时返回是否话题已归档
  */
 export function sendChatMessageStream(sessionId, query, onDelta) {
   // #ifdef MP-WEIXIN
@@ -117,10 +162,11 @@ export function sendChatMessageStream(sessionId, query, onDelta) {
       success(res) {
         const text = acc.end()
         onDelta && onDelta(text)
+        const topicClosed = acc.getTopicClosed()
         const headers = res.header || {}
         const contentType = String(headers['content-type'] || headers['Content-Type'] || '').toLowerCase()
         if (res.statusCode >= 200 && res.statusCode < 300 && contentType.includes('text/event-stream')) {
-          resolve(true)
+          resolve({ topicClosed })
           return
         }
         if (res.statusCode >= 200 && res.statusCode < 300) {

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>话题 - 归档</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "background": "#f9f9f9",
+              "surface-variant": "#e2e2e2",
+              "outline": "#6c7b6c",
+              "surface-dim": "#dadada",
+              "secondary-fixed-dim": "#96d5a0",
+              "primary-fixed-dim": "#45e17c",
+              "on-error-container": "#93000a",
+              "on-tertiary": "#ffffff",
+              "on-secondary-fixed": "#00210b",
+              "on-secondary-fixed-variant": "#135129",
+              "on-tertiary-fixed-variant": "#82261e",
+              "tertiary-container": "#ff8475",
+              "tertiary-fixed": "#ffdad5",
+              "surface": "#f9f9f9",
+              "on-tertiary-container": "#741c16",
+              "tertiary-fixed-dim": "#ffb4aa",
+              "inverse-on-surface": "#f1f1f1",
+              "surface-container-highest": "#e2e2e2",
+              "inverse-surface": "#2f3131",
+              "error-container": "#ffdad6",
+              "on-primary-fixed": "#00210b",
+              "surface-container-lowest": "#ffffff",
+              "surface-container-low": "#f3f3f3",
+              "on-surface": "#1a1c1c",
+              "outline-variant": "#bbcbba",
+              "secondary": "#2f6a3f",
+              "secondary-container": "#b1f2bb",
+              "on-background": "#1a1c1c",
+              "surface-container": "#eeeeee",
+              "primary-container": "#07c160",
+              "on-error": "#ffffff",
+              "on-secondary-container": "#357044",
+              "on-primary-container": "#00471f",
+              "tertiary": "#a23d33",
+              "primary": "#006d33",
+              "error": "#ba1a1a",
+              "primary-fixed": "#66ff95",
+              "surface-container-high": "#e8e8e8",
+              "surface-bright": "#f9f9f9",
+              "on-surface-variant": "#3d4a3d",
+              "inverse-primary": "#45e17c",
+              "on-secondary": "#ffffff",
+              "surface-tint": "#006d33",
+              "secondary-fixed": "#b1f2bb",
+              "on-tertiary-fixed": "#410001",
+              "on-primary": "#ffffff",
+              "on-primary-fixed-variant": "#005225"
+            },
+            fontFamily: {
+              "headline": ["Plus Jakarta Sans"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.5rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .tap-highlight-none { -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3 { font-family: 'Plus Jakarta Sans', sans-serif; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-surface-container-low text-on-surface min-h-screen pb-32">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-white/70 backdrop-blur-xl flex items-center px-6 h-16 w-full">
+<div class="flex items-center gap-4 w-full">
+<button class="active:opacity-70 transition-opacity flex items-center justify-center">
+<span class="material-symbols-outlined text-[#07C160]">arrow_back</span>
+</button>
+<h1 class="font-['Plus_Jakarta_Sans'] font-semibold text-lg tracking-tight text-[#1a1c1c]">话题</h1>
+</div>
+</header>
+<!-- Content Canvas -->
+<main class="pt-20 px-4">
+<!-- Search Bar Section -->
+<div class="mb-6">
+<div class="bg-surface-container rounded-lg flex items-center px-4 py-3 gap-3 transition-all focus-within:ring-2 focus-within:ring-primary-container/20">
+<span class="material-symbols-outlined text-on-surface-variant text-xl">search</span>
+<input class="bg-transparent border-none outline-none w-full text-on-surface placeholder:text-on-surface-variant/60 font-medium" placeholder="搜索话题或者记录" type="text"/>
+</div>
+</div>
+<!-- Topics List -->
+<div class="">
+<!-- Topic Item 1 -->
+<div class="bg-surface-container-lowest rounded-lg p-4 flex items-center gap-4 active:scale-[0.98] transition-transform cursor-pointer relative overflow-hidden">
+<div class="w-12 h-12 rounded-lg bg-primary-container/10 flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-primary-container" style="font-variation-settings: 'FILL' 1;">terminal</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="font-semibold text-on-surface truncate">技术交流</h3>
+<span class="text-[10px] text-on-surface-variant/60 font-medium">12:45</span>
+</div>
+<p class="text-sm text-on-surface-variant truncate mt-0.5">这是一条关于 React Server Components 的深度探讨...</p>
+</div>
+</div>
+<!-- Topic Item 2 (The "Active/Focused" one for the context menu demo) -->
+<div class="bg-surface-container-lowest rounded-lg p-4 flex items-center gap-4 relative overflow-hidden ring-2 ring-primary-container/10">
+<div class="w-12 h-12 rounded-lg bg-secondary-container/30 flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">analytics</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="font-semibold text-on-surface truncate">周报总结</h3>
+<span class="text-[10px] text-on-surface-variant/60 font-medium">昨天</span>
+</div>
+<p class="text-sm text-on-surface-variant truncate mt-0.5">讨论记录：本周 Q3 进度超前，下周重点关注 UI 细节更新...</p>
+</div>
+</div>
+<!-- Topic Item 3 -->
+<div class="bg-surface-container-lowest rounded-lg p-4 flex items-center gap-4 active:scale-[0.98] transition-transform cursor-pointer">
+<div class="w-12 h-12 rounded-lg bg-tertiary-container/20 flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-tertiary" style="font-variation-settings: 'FILL' 1;">palette</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="font-semibold text-on-surface truncate">设计复盘</h3>
+<span class="text-[10px] text-on-surface-variant/60 font-medium">前天</span>
+</div>
+<p class="text-sm text-on-surface-variant truncate mt-0.5">针对 Hyper-Clean Concierge 风格的最新反馈汇总</p>
+</div>
+</div>
+<!-- Topic Item 4 -->
+<div class="bg-surface-container-lowest rounded-lg p-4 flex items-center gap-4 active:scale-[0.98] transition-transform cursor-pointer">
+<div class="w-12 h-12 rounded-lg bg-surface-container-highest flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-outline">archive</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="font-semibold text-on-surface truncate">历史归档</h3>
+<span class="text-[10px] text-on-surface-variant/60 font-medium">周一</span>
+</div>
+<p class="text-sm text-on-surface-variant truncate mt-0.5">旧版 V1.0 系统迁移相关的历史对话记录</p>
+</div>
+</div>
+</div>
+</main>
+<!-- Context Menu Overlay (The "Special" Requirement) -->
+<div class="fixed inset-0 z-[100] flex items-end justify-center p-4 bg-black/40 backdrop-blur-sm">
+<div class="w-full max-w-md bg-surface-container-lowest rounded-lg overflow-hidden flex flex-col items-stretch">
+<div class="py-2">
+<button class="w-full py-4 text-center text-on-surface font-medium border-b border-surface-container active:bg-surface-container transition-colors">置顶</button>
+<button class="w-full py-4 text-center text-on-surface font-medium border-b border-surface-container active:bg-surface-container transition-colors">继续对话</button>
+<button class="w-full py-4 text-center text-on-surface font-medium border-b border-surface-container active:bg-surface-container transition-colors">修改标题</button>
+<button class="w-full py-4 text-center text-error font-medium active:bg-error/5 transition-colors">删除会话</button>
+</div>
+<div class="h-2 bg-surface-container-low"></div>
+<button class="w-full py-5 text-center text-on-surface-variant font-semibold active:bg-surface-container transition-colors">取消</button>
+</div>
+</div>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 w-full z-50 rounded-t-lg bg-white/70 backdrop-blur-xl flex justify-around items-center pt-3 pb-safe px-4 shadow-[0_-4px_24px_rgba(0,0,0,0.04)]">
+<!-- Tab: 话题 (Active) -->
+<a class="flex flex-col items-center justify-center text-[#07C160] transition-colors tap-highlight-none" href="#">
+<span class="material-symbols-outlined mb-1" style="font-variation-settings: 'FILL' 1;">chat_bubble</span>
+<span class="font-['Inter'] text-[10px] font-medium">话题</span>
+</a>
+<!-- Tab: 需求 -->
+<a class="flex flex-col items-center justify-center text-[#3d4a3d] transition-colors tap-highlight-none active:scale-90" href="#">
+<span class="material-symbols-outlined mb-1">ads_click</span>
+<span class="font-['Inter'] text-[10px] font-medium">需求</span>
+</a>
+<!-- Tab: 商业 -->
+<a class="flex flex-col items-center justify-center text-[#3d4a3d] transition-colors tap-highlight-none active:scale-90" href="#">
+<span class="material-symbols-outlined mb-1">business_center</span>
+<span class="font-['Inter'] text-[10px] font-medium">商业</span>
+</a>
+<!-- Tab: 我的 -->
+<a class="flex flex-col items-center justify-center text-[#3d4a3d] transition-colors tap-highlight-none active:scale-90" href="#">
+<span class="material-symbols-outlined mb-1">person</span>
+<span class="font-['Inter'] text-[10px] font-medium">我的</span>
+</a>
+</nav>
+</body></html>

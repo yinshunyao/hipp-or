@@ -6,10 +6,10 @@
 # @IDE            : PyCharm
 # @desc           : 简要说明
 
+import asyncio
 import datetime
 import os
 from pathlib import Path
-from aiopathlib import AsyncPath
 from fastapi import UploadFile
 from application.settings import TEMP_DIR, STATIC_ROOT
 from core.exception import CustomException
@@ -19,7 +19,14 @@ from utils.tools import generate_string
 
 class FileBase:
 
-    IMAGE_ACCEPT = ["image/png", "image/jpeg", "image/gif", "image/x-icon"]
+    IMAGE_ACCEPT = [
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+        "image/x-icon",
+        "image/vnd.microsoft.icon",
+        "image/ico",
+    ]
     VIDEO_ACCEPT = ["video/mp4", "video/mpeg"]
     AUDIO_ACCEPT = ["audio/wav", "audio/mp3", "audio/m4a", "audio/wma", "audio/ogg", "audio/mpeg", "audio/x-wav"]
     ALL_ACCEPT = [*IMAGE_ACCEPT, *VIDEO_ACCEPT, *AUDIO_ACCEPT]
@@ -122,10 +129,9 @@ class FileBase:
         :return:
         """
         date = datetime.datetime.strftime(datetime.datetime.now(), "%Y%m%d")
-        file_dir = AsyncPath(TEMP_DIR) / date
+        file_dir = Path(TEMP_DIR) / date
         path = file_dir / (generate_string(4) + str(int(datetime.datetime.now().timestamp())))
-        if not await path.exists():
-            await path.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(path.mkdir, parents=True, exist_ok=True)
         return str(path).replace("\\", "/")
 
     @classmethod
@@ -143,6 +149,13 @@ class FileBase:
                 raise CustomException(f"上传文件过大，不能超过{max_size}MB", status.HTTP_ERROR)
             await file.seek(0)
         if mime_types:
-            if file.content_type not in mime_types:
+            ct = (file.content_type or "").strip().lower()
+            allowed = {m.lower() for m in mime_types}
+            ok = ct in allowed
+            if not ok:
+                fn = (file.filename or "").lower()
+                if fn.endswith(".ico") and (not ct or ct == "application/octet-stream"):
+                    ok = True
+            if not ok:
                 raise CustomException(f"上传文件格式错误，只支持 {'/'.join(mime_types)} 格式!", status.HTTP_ERROR)
         return True

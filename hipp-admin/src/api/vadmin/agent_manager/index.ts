@@ -26,6 +26,7 @@ export const testAgentApi = (data: {
   api_server: string
   app_key: string
   remark?: string | null
+  service_type?: string | null
 }): Promise<IResponse> => {
   return request.post({ url: '/vadmin/agent/agents/test', data })
 }

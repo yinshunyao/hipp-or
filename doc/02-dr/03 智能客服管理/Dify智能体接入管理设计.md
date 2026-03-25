@@ -18,6 +18,7 @@
 | id | Integer | PK | 主键 |
 | api_server | String(500) | NOT NULL | Dify API 服务器地址 |
 | app_key | String(500) | NOT NULL | Dify APP_KEY |
+| service_type | String(100) | nullable | 智能客服类型（如：需求分析、商业评估；支持运营自定义扩展） |
 | remark | String(500) | nullable | 备注 |
 | name | String(255) | nullable | 智能体名称（来自 Dify /v1/info） |
 | description | Text | nullable | 智能体描述（来自 Dify） |
@@ -46,15 +47,15 @@
 | POST | /agents | 创建智能客服 | FullAdminAuth |
 | PUT | /agents/{id} | 编辑智能客服（请求体中 **null 表示不修改** 该字段；仅非 null 字段参与 UPDATE） | FullAdminAuth |
 | DELETE | /agents | 批量软删除 | FullAdminAuth |
-| POST | /agents/test | 测试连通性（Body：`api_server`、`app_key`、`remark`、`id` 可选；有 `id` 时更新该条并落库） | FullAdminAuth |
+| POST | /agents/test | 测试连通性（Body：`api_server`、`app_key`、`remark`、`service_type`、`id` 可选；有 `id` 时更新该条并落库） | FullAdminAuth |
 | PUT | /agents/{id}/publish | 上架 | FullAdminAuth |
 | PUT | /agents/{id}/unpublish | 下架 | FullAdminAuth |
 | GET | /agents/{id} | 获取单条详情 | FullAdminAuth |
 
 #### 测试接口逻辑（POST /agents/test）
 
-1. 使用请求体中的 `api_server`、`app_key`（及可选 `remark`、`id`）调用 Dify，**不再**仅按 id 读库（避免表单已改未保存时仍用旧配置）。
-2. 若 `id` 有值：更新该记录的配置字段并写入 Dify 同步结果；若 `id` 为空：不落库，仅返回同步结果供前端展示。
+1. 使用请求体中的 `api_server`、`app_key`（及可选 `remark`、`service_type`、`id`）调用 Dify，**不再**仅按 id 读库（避免表单已改未保存时仍用旧配置）。
+2. 若 `id` 有值：更新该记录的配置字段（含 `service_type`）并写入 Dify 同步结果；若 `id` 为空：不落库，仅返回同步结果供前端展示（响应中回显 `service_type`）。
 3. 使用 httpx 异步调用 `GET {api_server}/info`（Header: `Authorization: Bearer {app_key}`），其中 `api_server` 须为含 `/v1` 的基准地址（如 `http://host/v1`）。
 4. 使用 httpx 异步调用 `GET {api_server}/site`（同上）
 5. 将 info / site 响应写入模型字段（与现有一致），`is_tested = True`
@@ -69,6 +70,7 @@
 
 - `keyword`：模糊匹配 name、description、tags（OR 条件）
 - `status`：精确匹配上架状态
+- `service_type`：精确匹配智能客服类型（空字符串表示不按类型筛选）
 
 ## 前端
 
@@ -77,20 +79,25 @@
 智能客服管理为单页面，包含两部分：
 
 1. **列表页**（`AgentManager.vue`）
-   - 搜索区：关键词输入框（搜索名称/描述/标签）+ 上架状态下拉（全部/草稿/已上架）
+   - 搜索区：关键词输入框（搜索名称/描述/标签）+ 上架状态下拉（全部/草稿/已上架）+ 智能客服类型下拉（全部/需求分析/商业评估等，与表单选项同源）
    - 工具栏：「新增智能客服」按钮
-   - 数据表格列：头像、名称、描述、标签、备注、上架状态、操作
+   - 数据表格列：头像、名称、描述、标签、智能客服类型、备注、上架状态、操作
    - 操作列按钮：编辑、上架/下架、测试、删除
 
 2. **配置弹窗**（`components/Write.vue`，使用 ElDialog）
-   - 表单区：API 服务器地址、APP_KEY、备注
+   - 表单区：API 服务器地址、APP_KEY、智能客服类型（`ElSelect`：`filterable` + `allow-create`，内置「需求分析」「商业评估」，可输入保存新类型）、备注
    - 操作按钮：测试、保存、上架
    - 信息展示区（测试成功后显示）：头像、名称、描述、标签、备注、状态
+   - **新增：信息编辑区（测试成功后显示）**：支持编辑并保存生效以下字段
+     - 头像：支持上传图片替换（交互与校验方式对齐系统设置中的图片上传）
+     - 名称（name）
+     - 描述（description）
+     - 标签（tags，支持多选/手动输入新增）
 
 ### 头像展示逻辑
 
-- 优先展示 `icon`（emoji）配合 `icon_background` 背景色
-- 若 `icon` 为空，展示 `icon_url` 图片
+- 当 `icon_url` 有值时优先展示图片
+- 否则展示 `icon`（emoji）配合 `icon_background` 背景色
 - 两者均为空则展示默认图标
 
 ### 路由
@@ -114,4 +121,5 @@
 - Dify 接口调用超时设置为 10 秒
 - APP_KEY 在数据库中明文存储（当前阶段不加密）
 - 标签（tags）以 JSON 数组字符串存储，前端解析展示为 Tag 组件
+- 当运营在管理端修改并保存 name/description/tags/icon_url 等字段后，列表与详情展示以保存后的信息为准；再次执行「测试」会以 Dify 同步结果覆盖相关字段，运营可在同步后再次编辑保存
 - 本期不涉及智能客服的对话功能，仅做接入管理

@@ -59,6 +59,15 @@ rm -rf .venv
 PYTHON=/opt/homebrew/bin/python3.10 ./run.sh
 ```
 
+## 数据库升级
+```shell
+# 正常升级
+.venv/bin/python main.py migrate --env dev  
+
+#  有时候多个api可能把数据库中的head搞乱【可选】
+.venv/bin/python -m alembic --name dev upgrade head
+```
+
 ## 帮助文档
 
 在线文档地址（在配置文件里面设置路径或者关闭；端口与 `HIPP_BIND_PORT` 一致）

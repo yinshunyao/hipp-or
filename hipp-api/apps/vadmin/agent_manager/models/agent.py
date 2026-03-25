@@ -14,6 +14,9 @@ class VadminAgent(BaseModel):
 
     api_server: Mapped[str] = mapped_column(String(500), nullable=False, comment="Dify API 服务器地址")
     app_key: Mapped[str] = mapped_column(String(500), nullable=False, comment="Dify APP_KEY")
+    service_type: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, index=True, comment="智能客服类型（如需求分析、商业评估）"
+    )
     remark: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="备注")
 
     name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True, comment="智能体名称")

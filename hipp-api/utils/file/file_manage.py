@@ -9,13 +9,15 @@ import asyncio
 import io
 import os
 import zipfile
-from application.settings import STATIC_ROOT, BASE_DIR, STATIC_URL
+from pathlib import Path
+
+import aiofiles
+import aioshutil
+from application.settings import STATIC_ROOT, BASE_DIR, STATIC_URL, STATIC_DIR
 from fastapi import UploadFile
 import sys
 from core.exception import CustomException
 from utils.file.file_base import FileBase
-from aiopathlib import AsyncPath
-import aioshutil
 
 
 class FileManage(FileBase):
@@ -69,12 +71,13 @@ class FileManage(FileBase):
             'remote_path': '/media/system/20240301/1709303205HuYB3mrC.png'
         }
         """
-        path = AsyncPath(self.path)
+        path = Path(self.path)
         if sys.platform == "win32":
-            path = AsyncPath(self.path.replace("/", "\\"))
-        if not await path.parent.exists():
-            await path.parent.mkdir(parents=True, exist_ok=True)
-        await path.write_bytes(await self.file.read())
+            path = Path(self.path.replace("/", "\\"))
+        await asyncio.to_thread(path.parent.mkdir, parents=True, exist_ok=True)
+        content = await self.file.read()
+        async with aiofiles.open(path, "wb") as f:
+            await f.write(content)
         return {
             "local_path": str(path),
             "remote_path": STATIC_URL + str(path).replace(STATIC_ROOT, '').replace("\\", '/')
@@ -88,7 +91,8 @@ class FileManage(FileBase):
         :return:
         """
         temp_file_path = await cls.async_generate_temp_file_path(file.filename)
-        await AsyncPath(temp_file_path).write_bytes(await file.read())
+        async with aiofiles.open(temp_file_path, "wb") as f:
+            await f.write(await file.read())
         return temp_file_path
 
     @classmethod
@@ -114,19 +118,25 @@ class FileManage(FileBase):
     async def async_copy_file(src: str, dst: str) -> None:
         """
         异步复制文件
-        根目录为项目根目录，传过来的文件路径均为相对路径
+        兼容绝对路径、本地相对路径与 /media/ 前缀路径
         :param src: 原始文件
         :param dst: 目标路径。绝对路径
         """
-        if src[0] == "/":
-            src = src.lstrip("/")
-        src = AsyncPath(BASE_DIR) / src
-        if not await src.exists():
-            raise CustomException(f"{src} 源文件不存在！")
-        dst = AsyncPath(dst)
-        if not await dst.parent.exists():
-            await dst.parent.mkdir(parents=True, exist_ok=True)
-        await aioshutil.copyfile(src, dst)
+        src_path = Path(src)
+        if not src_path.is_absolute():
+            normalized = src.lstrip("/")
+            if normalized.startswith(f"{STATIC_DIR}/"):
+                src_path = Path(BASE_DIR) / normalized
+            elif normalized.startswith(f"{STATIC_URL.lstrip('/')}/"):
+                relative = normalized[len(STATIC_URL.lstrip("/")):].lstrip("/")
+                src_path = Path(STATIC_ROOT) / relative
+            else:
+                src_path = Path(BASE_DIR) / normalized
+        if not await asyncio.to_thread(src_path.exists):
+            raise CustomException(f"{src_path} 源文件不存在！")
+        dst = Path(dst)
+        await asyncio.to_thread(dst.parent.mkdir, parents=True, exist_ok=True)
+        await aioshutil.copyfile(src_path, dst)
 
     @staticmethod
     async def async_copy_dir(src: str, dst: str, dirs_exist_ok: bool = True) -> None:

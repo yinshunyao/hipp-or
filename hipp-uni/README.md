@@ -4,9 +4,9 @@
 ```shell
 # 版本只支持 18，不支持20和22
 nvm use 18
-pnpm install
-pnpm approve-builds
-pnpm install uview-plus 
+npm install
+# pnpm approve-builds
+# pnpm install uview-plus 
 ```
 
 

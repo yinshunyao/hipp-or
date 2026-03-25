@@ -5,10 +5,14 @@ from .chat import (
     SessionListOut,
     InboxItem,
     InboxOut,
+    SceneAgentOut,
     CreateSessionIn,
+    CreateHumanSupportSessionIn,
     PatchSessionIn,
     SendMessageIn,
     ChatMessageOut,
+    ArchivedTopicItemOut,
+    ArchivedTopicsPageOut,
 )
 
 __all__ = [
@@ -17,8 +21,12 @@ __all__ = [
     "SessionListOut",
     "InboxItem",
     "InboxOut",
+    "SceneAgentOut",
     "CreateSessionIn",
+    "CreateHumanSupportSessionIn",
     "PatchSessionIn",
     "SendMessageIn",
     "ChatMessageOut",
+    "ArchivedTopicItemOut",
+    "ArchivedTopicsPageOut",
 ]

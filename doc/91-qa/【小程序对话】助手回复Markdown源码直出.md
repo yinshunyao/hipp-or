@@ -2,7 +2,7 @@
 
 小程序对话页中，助手回复当前按纯文本展示，导致 `**加粗**`、列表、代码块、链接等 Markdown 语法直接显示为源码，阅读体验差且不符合智能对话产品预期。
 
-复现：进入 `pages/chat/chat`，发送一个会返回 Markdown 内容的问题（如包含标题、列表、代码示例），可见回复区直接展示原始标记符号。
+复现：进入 `subpkg/chat/chat`，发送一个会返回 Markdown 内容的问题（如包含标题、列表、代码示例），可见回复区直接展示原始标记符号。
 
 # 关联文档
 
@@ -14,12 +14,12 @@
 
 # 根因分析
 
-`hipp-or/hipp-uni/pages/chat/chat.vue` 中消息正文统一通过 `<text>` 节点渲染，未对助手消息执行 Markdown 解析与格式化。  
+`hipp-or/hipp-uni/subpkg/chat/chat.vue` 中消息正文统一通过 `<text>` 节点渲染，未对助手消息执行 Markdown 解析与格式化。  
 因此服务端返回的 Markdown 文本会被当作普通字符串展示。
 
 # 涉及文件
 
-- `hipp-or/hipp-uni/pages/chat/chat.vue`：新增 Markdown 到安全 HTML 的前端转换，并对助手消息改为 `rich-text` 展示。
+- `hipp-or/hipp-uni/subpkg/chat/chat.vue`：新增 Markdown 到安全 HTML 的前端转换，并对助手消息改为 `rich-text` 展示。
 - `hipp-or/doc/02-dr/04 小程序对话/小程序用户对话设计.md`：补充助手消息 Markdown 渲染设计约束。
 - `hipp-or/doc/03-tr/04 小程序对话/小程序用户对话测试设计.md`：新增 Markdown 展示回归用例。
 - `hipp-or/doc/01-or/【小程序对话】用户智能对话.md`：补充已完成问题记录。

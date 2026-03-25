@@ -53,6 +53,11 @@ class AgentDal(DalBase):
             )
         return super().add_filter_condition(sql, **kwargs)
 
+    @staticmethod
+    def _normalize_service_type(service_type: str | None) -> str | None:
+        s = (service_type or "").strip()
+        return s or None
+
     async def _fetch_dify_and_apply(
         self,
         obj: models.VadminAgent,
@@ -65,10 +70,18 @@ class AgentDal(DalBase):
         obj.tags = json.dumps(tags, ensure_ascii=False) if tags else None
         obj.mode = info_data.get("mode")
 
-        obj.icon_type = site_data.get("icon_type")
-        obj.icon = site_data.get("icon")
-        obj.icon_background = site_data.get("icon_background")
-        obj.icon_url = site_data.get("icon_url")
+        icon_url = site_data.get("icon_url")
+        if icon_url:
+            # icon_url 有值时，以图片为准；前端默认 icon 优先，因此这里需清空 emoji 字段避免抢占
+            obj.icon_type = "image"
+            obj.icon_url = icon_url
+            obj.icon = None
+            obj.icon_background = None
+        else:
+            obj.icon_type = site_data.get("icon_type")
+            obj.icon = site_data.get("icon")
+            obj.icon_background = site_data.get("icon_background")
+            obj.icon_url = None
         obj.webapp_config = json.dumps(site_data, ensure_ascii=False)
 
         obj.is_tested = True
@@ -114,11 +127,13 @@ class AgentDal(DalBase):
         app_key: str,
         remark: str | None,
         data_id: int | None,
+        service_type: str | None = None,
     ) -> dict:
         """
         使用请求体中的 api_server、app_key 调用 Dify；
         data_id 有值时先写入配置再同步并落库；无值时仅返回 Dify 同步结果（不落库）。
         """
+        st = self._normalize_service_type(service_type)
         info_data, site_data = await self._call_dify(api_server, app_key)
 
         if data_id is not None:
@@ -126,25 +141,36 @@ class AgentDal(DalBase):
             obj.api_server = api_server
             obj.app_key = app_key
             obj.remark = remark
+            obj.service_type = st
             await self._fetch_dify_and_apply(obj, info_data, site_data)
             await self.flush(obj)
             return self.schema.model_validate(obj).model_dump()
 
         tags = info_data.get("tags")
         tags_str = json.dumps(tags, ensure_ascii=False) if tags else None
+        icon_url = site_data.get("icon_url")
+        if icon_url:
+            icon_type = "image"
+            icon = None
+            icon_background = None
+        else:
+            icon_type = site_data.get("icon_type")
+            icon = site_data.get("icon")
+            icon_background = site_data.get("icon_background")
         return {
             "id": None,
             "api_server": api_server,
             "app_key": app_key,
             "remark": remark,
+            "service_type": st,
             "name": info_data.get("name"),
             "description": info_data.get("description"),
             "tags": tags_str,
             "mode": info_data.get("mode"),
-            "icon_type": site_data.get("icon_type"),
-            "icon": site_data.get("icon"),
-            "icon_background": site_data.get("icon_background"),
-            "icon_url": site_data.get("icon_url"),
+            "icon_type": icon_type,
+            "icon": icon,
+            "icon_background": icon_background,
+            "icon_url": icon_url,
             "webapp_config": json.dumps(site_data, ensure_ascii=False),
             "status": "draft",
             "is_tested": True,

@@ -8,10 +8,15 @@ import {
   ElMessage,
   ElTag,
   ElDescriptions,
-  ElDescriptionsItem
+  ElDescriptionsItem,
+  ElSelect,
+  ElOption,
+  ElUpload
 } from 'element-plus'
 import { addAgentApi, putAgentApi, testAgentApi, publishAgentApi } from '@/api/vadmin/agent_manager'
 import { BaseButton } from '@/components/Button'
+import { useAuthStore } from '@/store/modules/auth'
+import type { UploadProps } from 'element-plus'
 
 interface Props {
   modelValue: boolean
@@ -35,10 +40,16 @@ const dialogVisible = computed({
 })
 
 const formRef = ref()
+const DEFAULT_SERVICE_TYPES = ['需求分析', '商业评估'] as const
+
+const authStore = useAuthStore()
+const token = computed(() => authStore.getToken)
+
 const formData = ref({
   id: null as number | null,
   api_server: '',
   app_key: '',
+  service_type: '' as string,
   remark: ''
 })
 
@@ -47,6 +58,18 @@ const saveLoading = ref(false)
 const testLoading = ref(false)
 const publishLoading = ref(false)
 const isTested = ref(false)
+const avatarNonce = ref(0)
+const avatarUploading = ref(false)
+
+const withCacheBust = (
+  url: string | null | undefined,
+  version: string | number | null | undefined
+) => {
+  if (!url) return ''
+  const v = version ?? Date.now()
+  const sep = url.includes('?') ? '&' : '?'
+  return `${url}${sep}v=${encodeURIComponent(String(v))}`
+}
 
 const rules = {
   api_server: [{ required: true, message: '请输入API服务器地址', trigger: 'blur' }],
@@ -62,6 +85,7 @@ watch(
           id: props.currentRow.id,
           api_server: props.currentRow.api_server || '',
           app_key: props.currentRow.app_key || '',
+          service_type: props.currentRow.service_type || '',
           remark: props.currentRow.remark || ''
         }
         isTested.value = props.currentRow.is_tested || false
@@ -71,7 +95,7 @@ watch(
           agentInfo.value = null
         }
       } else {
-        formData.value = { id: null, api_server: '', app_key: '', remark: '' }
+        formData.value = { id: null, api_server: '', app_key: '', service_type: '', remark: '' }
         agentInfo.value = null
         isTested.value = false
       }
@@ -88,6 +112,55 @@ const parseTags = (tagsStr: string | null): string[] => {
   }
 }
 
+const ensureTagsString = (tags: string[] | null | undefined) => {
+  const arr = (tags || []).map((t) => String(t).trim()).filter(Boolean)
+  return JSON.stringify(arr)
+}
+
+const getEditableTags = () => {
+  return parseTags(agentInfo.value?.tags || null)
+}
+
+const setEditableTags = (tags: string[]) => {
+  if (!agentInfo.value) agentInfo.value = {}
+  agentInfo.value.tags = ensureTagsString(tags)
+}
+
+const beforeAvatarUpload: UploadProps['beforeUpload'] = (rawFile) => {
+  const isIMAGE = ['image/jpeg', 'image/gif', 'image/png'].includes(rawFile.type)
+  const isLtSize = rawFile.size / 1024 / 1024 < 5
+  if (!isIMAGE) ElMessage.error('头像图片必须是 JPG/GIF/PNG 格式!')
+  if (!isLtSize) ElMessage.error('头像图片大小不能超过 5MB!')
+  return isIMAGE && isLtSize
+}
+
+const handleAvatarSuccess: UploadProps['onSuccess'] = (response) => {
+  avatarUploading.value = false
+  if (response?.code === 200) {
+    const url = response?.data?.remote_path || response?.data
+    if (!url) {
+      ElMessage.error('上传失败：未返回图片地址')
+      return
+    }
+    if (!agentInfo.value) agentInfo.value = {}
+    agentInfo.value.icon_type = 'image'
+    agentInfo.value.icon = null
+    agentInfo.value.icon_url = url
+    avatarNonce.value += 1
+  } else {
+    ElMessage.error(response?.message || '上传失败')
+  }
+}
+
+const handleAvatarError: UploadProps['onError'] = () => {
+  avatarUploading.value = false
+  ElMessage.error('上传失败')
+}
+
+const handleAvatarProgress: UploadProps['onProgress'] = () => {
+  avatarUploading.value = true
+}
+
 const handleTest = async () => {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
@@ -98,12 +171,14 @@ const handleTest = async () => {
       id: formData.value.id,
       api_server: formData.value.api_server,
       app_key: formData.value.app_key,
-      remark: formData.value.remark || null
+      remark: formData.value.remark || null,
+      service_type: formData.value.service_type?.trim() || null
     })
     if (res.code === 200) {
       ElMessage.success('测试成功')
       agentInfo.value = res.data
       isTested.value = true
+      avatarNonce.value += 1
       if (res.data?.id != null) {
         formData.value.id = res.data.id
       }
@@ -143,6 +218,7 @@ const handleSave = async (silent = false) => {
         }
       })
     }
+    data.service_type = formData.value.service_type?.trim() || null
     let res
     if (data.id) {
       res = await putAgentApi(data)
@@ -203,6 +279,19 @@ const handlePublish = async () => {
       <ElFormItem label="APP_KEY" prop="app_key">
         <ElInput v-model="formData.app_key" placeholder="请输入Dify应用的APP_KEY" />
       </ElFormItem>
+      <ElFormItem label="智能客服类型" prop="service_type">
+        <ElSelect
+          v-model="formData.service_type"
+          filterable
+          allow-create
+          default-first-option
+          clearable
+          placeholder="选择或输入类型"
+          style="width: 100%"
+        >
+          <ElOption v-for="t in DEFAULT_SERVICE_TYPES" :key="t" :label="t" :value="t" />
+        </ElSelect>
+      </ElFormItem>
       <ElFormItem label="备注">
         <ElInput v-model="formData.remark" placeholder="请输入备注（可选）" />
       </ElFormItem>
@@ -219,10 +308,90 @@ const handlePublish = async () => {
 
     <template v-if="agentInfo">
       <el-divider />
+      <ElForm label-width="120px" style="margin-bottom: 12px">
+        <ElFormItem label="头像">
+          <div style="display: flex; align-items: center; gap: 12px">
+            <img
+              v-if="agentInfo.icon_url"
+              :src="withCacheBust(agentInfo.icon_url, agentInfo.update_datetime || avatarNonce)"
+              style="width: 56px; height: 56px; border-radius: 8px; object-fit: cover"
+            />
+            <span
+              v-else-if="agentInfo.icon"
+              :style="{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '56px',
+                height: '56px',
+                borderRadius: '8px',
+                backgroundColor: agentInfo.icon_background || '#E0E0E0',
+                fontSize: '28px'
+              }"
+            >
+              {{ agentInfo.icon }}
+            </span>
+            <span
+              v-else
+              style="width: 56px; height: 56px; border-radius: 8px; background: #f2f2f2"
+            ></span>
+
+            <ElUpload
+              class="agent-avatar-uploader"
+              action="/api/vadmin/system/upload/image/to/local"
+              :data="{ path: 'agent' }"
+              :show-file-list="false"
+              :before-upload="beforeAvatarUpload"
+              :on-success="handleAvatarSuccess"
+              :on-error="handleAvatarError"
+              :on-progress="handleAvatarProgress"
+              accept="image/jpeg,image/gif,image/png"
+              name="file"
+              :headers="{ Authorization: token }"
+              :disabled="avatarUploading"
+            >
+              <BaseButton type="primary" :loading="avatarUploading">上传头像</BaseButton>
+            </ElUpload>
+          </div>
+        </ElFormItem>
+
+        <ElFormItem label="名称">
+          <ElInput v-model="agentInfo.name" placeholder="请输入名称" />
+        </ElFormItem>
+
+        <ElFormItem label="描述">
+          <ElInput
+            v-model="agentInfo.description"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入描述"
+          />
+        </ElFormItem>
+
+        <ElFormItem label="标签">
+          <ElSelect
+            :model-value="getEditableTags()"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            clearable
+            placeholder="选择或输入标签"
+            style="width: 100%"
+            @update:model-value="(v: any) => setEditableTags(v as string[])"
+          />
+        </ElFormItem>
+      </ElForm>
+
       <ElDescriptions title="智能客服信息" :column="2" border>
         <ElDescriptionsItem label="头像">
+          <img
+            v-if="agentInfo.icon_url"
+            :src="withCacheBust(agentInfo.icon_url, agentInfo.update_datetime || avatarNonce)"
+            style="width: 40px; height: 40px; border-radius: 6px"
+          />
           <span
-            v-if="agentInfo.icon"
+            v-else-if="agentInfo.icon"
             :style="{
               display: 'inline-flex',
               alignItems: 'center',
@@ -236,14 +405,12 @@ const handlePublish = async () => {
           >
             {{ agentInfo.icon }}
           </span>
-          <img
-            v-else-if="agentInfo.icon_url"
-            :src="agentInfo.icon_url"
-            style="width: 40px; height: 40px; border-radius: 6px"
-          />
           <span v-else>-</span>
         </ElDescriptionsItem>
         <ElDescriptionsItem label="名称">{{ agentInfo.name || '-' }}</ElDescriptionsItem>
+        <ElDescriptionsItem label="类型">
+          {{ agentInfo.service_type || formData.service_type || '-' }}
+        </ElDescriptionsItem>
         <ElDescriptionsItem label="描述" :span="2">
           {{ agentInfo.description || '-' }}
         </ElDescriptionsItem>

@@ -20,6 +20,16 @@ defineOptions({
   name: 'AgentManager'
 })
 
+const withCacheBust = (
+  url: string | null | undefined,
+  version: string | number | null | undefined
+) => {
+  if (!url) return ''
+  const v = version ?? Date.now()
+  const sep = url.includes('?') ? '&' : '?'
+  return `${url}${sep}v=${encodeURIComponent(String(v))}`
+}
+
 const { tableRegister, tableState, tableMethods } = useTable({
   fetchDataApi: async () => {
     const { pageSize, currentPage } = tableState
@@ -67,7 +77,14 @@ const tableColumns = reactive<TableColumn[]>([
     slots: {
       default: (data: any) => {
         const row = data.row
-        if (row.icon) {
+        if (row.icon_url) {
+          return (
+            <img
+              src={withCacheBust(row.icon_url, row.update_datetime)}
+              style={{ width: '36px', height: '36px', borderRadius: '6px' }}
+            />
+          )
+        } else if (row.icon) {
           return (
             <span
               style={{
@@ -83,13 +100,6 @@ const tableColumns = reactive<TableColumn[]>([
             >
               {row.icon}
             </span>
-          )
-        } else if (row.icon_url) {
-          return (
-            <img
-              src={row.icon_url}
-              style={{ width: '36px', height: '36px', borderRadius: '6px' }}
-            />
           )
         }
         return (
@@ -141,6 +151,12 @@ const tableColumns = reactive<TableColumn[]>([
         )
       }
     }
+  },
+  {
+    field: 'service_type',
+    label: '类型',
+    show: true,
+    width: '120px'
   },
   {
     field: 'remark',
@@ -233,6 +249,25 @@ const searchSchema = reactive<FormSchema[]>([
         { label: '已上架', value: 'published' }
       ]
     }
+  },
+  {
+    field: 'service_type',
+    label: '类型',
+    component: 'Select',
+    componentProps: {
+      clearable: true,
+      filterable: true,
+      allowCreate: true,
+      defaultFirstOption: true,
+      placeholder: '全部',
+      style: {
+        width: '160px'
+      },
+      options: [
+        { label: '需求分析', value: '需求分析' },
+        { label: '商业评估', value: '商业评估' }
+      ]
+    }
   }
 ])
 
@@ -285,7 +320,8 @@ const handleTest = async (row: any) => {
       id: row.id,
       api_server: row.api_server,
       app_key: row.app_key,
-      remark: row.remark ?? null
+      remark: row.remark ?? null,
+      service_type: row.service_type ?? null
     })
     if (res.code === 200) {
       ElMessage.success('测试成功，信息已同步')

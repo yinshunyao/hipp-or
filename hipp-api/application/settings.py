@@ -36,6 +36,8 @@ DEMO_WHITE_LIST_PATH = [
     "/vadmin/resource/images",
     "/vadmin/auth/user/export/query/list/to/excel",
     "/vadmin/agent/agents/test",
+    "/vadmin/system/data-migration/export",
+    "/vadmin/system/data-migration/import",
 ]
 """演示功能黑名单（触发异常 status_code=403），黑名单优先级更高"""
 DEMO_BLACK_LIST_PATH = [

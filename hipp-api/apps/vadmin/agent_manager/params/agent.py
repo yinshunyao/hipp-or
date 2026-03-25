@@ -12,10 +12,12 @@ class AgentParams(QueryParams):
             self,
             params: Paging = Depends(),
             keyword: str = None,
-            status: str = None
+            status: str = None,
+            service_type: str = None,
     ):
         super().__init__(params)
         self.v_order = "desc"
         self.v_order_field = "create_datetime"
         self.keyword = keyword
         self.status = status
+        self.service_type = service_type

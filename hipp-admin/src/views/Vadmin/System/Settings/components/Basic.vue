@@ -119,11 +119,16 @@ const formSchema = reactive<FormSchema[]>([
       slots: {
         default: (data) => {
           const beforeImageUpload: UploadProps['beforeUpload'] = (rawFile) => {
-            const isIMAGE = ['image/x-icon'].includes(rawFile.type)
+            const ct = (rawFile.type || '').toLowerCase()
+            const icoMime = ['image/x-icon', 'image/vnd.microsoft.icon', 'image/ico']
+            const name = rawFile.name || ''
+            const extOk = /\.ico$/i.test(name)
+            const isIMAGE =
+              icoMime.includes(ct) || (extOk && (!ct || ct === 'application/octet-stream'))
             const isLtSize = rawFile.size / 1024 / 1024 < 2
 
             if (!isIMAGE) {
-              ElMessage.error('上传ICO图标必须是 ico 格式!')
+              ElMessage.error('请上传 .ico 图标文件')
             }
             if (!isLtSize) {
               ElMessage.error('上传ICO图标大小不能超过 2MB!')
@@ -150,7 +155,7 @@ const formSchema = reactive<FormSchema[]>([
               show-file-list={false}
               before-upload={beforeImageUpload}
               on-success={handleUploadSuccess}
-              accept="image/x-icon"
+              accept=".ico,image/x-icon,image/vnd.microsoft.icon"
               name="file"
               headers={{ Authorization: token }}
             >

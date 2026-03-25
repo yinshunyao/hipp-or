@@ -72,6 +72,7 @@ async def test_agent(data: schemas.AgentTestIn, auth: Auth = Depends(FullAdminAu
             app_key=data.app_key,
             remark=data.remark,
             data_id=data.id,
+            service_type=data.service_type,
         )
         return SuccessResponse(result, msg="测试成功")
     except Exception as e:

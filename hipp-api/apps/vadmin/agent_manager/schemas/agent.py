@@ -10,6 +10,7 @@ from apps.vadmin.auth.schemas import UserSimpleOut
 class Agent(BaseModel):
     api_server: str | None = None
     app_key: str | None = None
+    service_type: str | None = None
     remark: str | None = None
     name: str | None = None
     description: str | None = None
@@ -45,4 +46,5 @@ class AgentTestIn(BaseModel):
     api_server: str
     app_key: str
     remark: str | None = None
+    service_type: str | None = None
     id: int | None = None

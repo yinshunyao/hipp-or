@@ -6,8 +6,8 @@ import { RouterMount, createRouter } from 'uni-simple-router'
 
 // 登录页面
 const loginPage = '/pages/login/login'
-// 默认进入对话收件箱
-const indexPage = '/pages/chat/index'
+// 默认进入需求页
+const indexPage = '/pages/requirement/index'
 
 const router = createRouter({
   platform: process.env.VUE_APP_PLATFORM,

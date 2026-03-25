@@ -7,6 +7,8 @@ from apps.mp_chat.dify_client import (
     DifyStreamAccumulator,
     StreamAnswerPrefixFilter,
     _chat_messages_url,
+    extract_conversation_name_from_chat_response,
+    fetch_dify_conversation_name,
     rewrite_sse_answer_line,
     send_chat_message_blocking,
 )
@@ -121,3 +123,137 @@ def test_rewrite_sse_answer_line_keeps_normal_content():
 def test_chat_messages_url_with_and_without_v1():
     assert _chat_messages_url("https://dify.example.com") == "https://dify.example.com/v1/chat-messages"
     assert _chat_messages_url("https://dify.example.com/v1") == "https://dify.example.com/v1/chat-messages"
+
+
+def test_extract_conversation_name_from_chat_response():
+    assert extract_conversation_name_from_chat_response(None) is None
+    assert extract_conversation_name_from_chat_response({"answer": "x"}) is None
+    assert extract_conversation_name_from_chat_response({"name": " 短标题 "}) == "短标题"
+    assert extract_conversation_name_from_chat_response({"conversation": {"name": "嵌套名"}}) == "嵌套名"
+
+
+def test_fetch_dify_conversation_name_first_page(monkeypatch):
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, url, headers=None, params=None):
+            assert "/v1/conversations" in url
+            assert params.get("user") == "user-9"
+
+            class R:
+                status_code = 200
+
+                def json(self):
+                    return {
+                        "data": [
+                            {"id": "other", "name": "x"},
+                            {"id": "target-cid", "name": "Dify 生成的话题名"},
+                        ],
+                        "has_more": False,
+                    }
+
+            return R()
+
+    import apps.mp_chat.dify_client as mod
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", lambda **kwargs: FakeClient())
+
+    async def _run():
+        return await fetch_dify_conversation_name(
+            "https://dify.example.com/v1",
+            "app-key",
+            "target-cid",
+            "user-9",
+        )
+
+    assert asyncio.run(_run()) == "Dify 生成的话题名"
+
+
+def test_fetch_dify_conversation_name_id_format_ignored(monkeypatch):
+    """conversation_id 与列表 id 大小写/连字符不一致时仍能匹配。"""
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, url, headers=None, params=None):
+
+            class R:
+                status_code = 200
+
+                def json(self):
+                    return {
+                        "data": [
+                            {"id": "AAAA-BBBB-CCCC-DDDD", "name": "规范化命中"},
+                        ],
+                        "has_more": False,
+                    }
+
+            return R()
+
+    import apps.mp_chat.dify_client as mod
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", lambda **kwargs: FakeClient())
+
+    async def _run():
+        return await fetch_dify_conversation_name(
+            "https://dify.example.com/v1",
+            "app-key",
+            "aaaabbbb-cccc-dddd",  # 查询 id 与 data.id 格式不同
+            "user-9",
+        )
+
+    assert asyncio.run(_run()) == "规范化命中"
+
+
+def test_fetch_dify_conversation_name_second_page(monkeypatch):
+    calls = []
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, url, headers=None, params=None):
+            calls.append(params.get("last_id"))
+
+            class R:
+                status_code = 200
+
+                def json(self):
+                    if params.get("last_id") is None:
+                        return {
+                            "data": [{"id": "a", "name": "n1"}],
+                            "has_more": True,
+                        }
+                    return {
+                        "data": [{"id": "want", "name": "第二页命中"}],
+                        "has_more": False,
+                    }
+
+            return R()
+
+    import apps.mp_chat.dify_client as mod
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", lambda **kwargs: FakeClient())
+
+    async def _run():
+        return await fetch_dify_conversation_name(
+            "https://d.example/v1",
+            "k",
+            "want",
+            "u1",
+        )
+
+    assert asyncio.run(_run()) == "第二页命中"
+    assert calls[0] is None
+    assert calls[1] == "a"

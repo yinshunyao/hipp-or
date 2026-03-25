@@ -7,7 +7,7 @@ module.exports = {
   // 应用信息
   appInfo: {
     // 应用版本
-    version: '1.4.0',
+    version: '1.0.0',
     // 隐私政策，不支持本地路径
     privacy: 'http://127.0.0.1:46000/docs/privacy',
     // 用户协议，不支持本地路径

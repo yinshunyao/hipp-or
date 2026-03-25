@@ -7,6 +7,7 @@
 
 from redis.asyncio import Redis
 from fastapi import APIRouter, Depends, Body, UploadFile, Form, Request
+from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
 from application.settings import ALIYUN_OSS
@@ -23,6 +24,7 @@ from apps.vadmin.auth.utils.validation.auth import Auth
 from .params import DictTypeParams, DictDetailParams, TaskParams
 from apps.vadmin.auth import crud as vadmin_auth_crud
 from .params.task import TaskRecordParams
+from .data_migration import build_export_zip, run_import
 
 app = APIRouter()
 
@@ -178,6 +180,30 @@ async def get_settings_privacy(auth: Auth = Depends(OpenAuth())):
 @app.get("/settings/agreement", summary="获取用户协议")
 async def get_settings_agreement(auth: Auth = Depends(OpenAuth())):
     return SuccessResponse((await crud.SettingsDal(auth.db).get_data(config_key="web_agreement")).config_value)
+
+
+@app.post("/data-migration/export", summary="导出业务数据快照（ZIP）")
+async def post_data_migration_export(auth: Auth = Depends(FullAdminAuth())):
+    exported_by = auth.user.name or auth.user.telephone or str(auth.user.id)
+    raw, filename = await build_export_zip(auth.db, exported_by)
+    return StreamingResponse(
+        iter([raw]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/data-migration/import", summary="导入业务数据快照（ZIP，全量替换）")
+async def post_data_migration_import(
+    file: UploadFile,
+    auth: Auth = Depends(FullAdminAuth()),
+):
+    body = await file.read()
+    max_bytes = 100 * 1024 * 1024
+    if len(body) > max_bytes:
+        return ErrorResponse(msg=f"文件过大，最大允许 {max_bytes // (1024 * 1024)}MB")
+    result = await run_import(auth.db, body)
+    return SuccessResponse(result)
 
 
 ###########################################################

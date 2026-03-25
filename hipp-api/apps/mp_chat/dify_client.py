@@ -12,6 +12,17 @@ from core.exception import CustomException
 _FINISH_STATUS_RE = re.compile(r"^结束状态\s*[:：]?\s*(True|False)\s*$")
 
 
+def parse_topic_finished_from_raw_answer(raw: str) -> bool:
+    """根据助手完整原文首行判断是否「结束状态 True」（归档条件之一）。"""
+    lines = (raw or "").splitlines()
+    if not lines:
+        return False
+    m = _FINISH_STATUS_RE.match(lines[0].strip())
+    if not m:
+        return False
+    return m.group(1) == "True"
+
+
 def strip_finish_status_prefix(text: str) -> str:
     """去除回答首行的结束状态标记，避免混入用户可见正文。"""
     lines = (text or "").splitlines()
@@ -142,11 +153,11 @@ def rewrite_sse_answer_line(line: str, answer_filter: StreamAnswerPrefixFilter) 
     return f"data: {json.dumps(obj, ensure_ascii=False)}"
 
 
-def _chat_messages_url(api_server: str) -> str:
+def _api_v1_base(api_server: str) -> str:
     """
-    兼容两种输入：
-    - http(s)://host            -> http(s)://host/v1/chat-messages
-    - http(s)://host/v1         -> http(s)://host/v1/chat-messages
+    兼容两种输入，返回 .../v1 根路径（无尾部斜杠）：
+    - http(s)://host     -> http(s)://host/v1
+    - http(s)://host/v1  -> http(s)://host/v1
     """
     base = (api_server or "").strip().rstrip("/")
     if not base:
@@ -154,8 +165,105 @@ def _chat_messages_url(api_server: str) -> str:
     if not base.startswith(("http://", "https://")):
         base = "http://" + base
     if base.endswith("/v1"):
-        return f"{base}/chat-messages"
-    return f"{base}/v1/chat-messages"
+        return base
+    return f"{base}/v1"
+
+
+def _chat_messages_url(api_server: str) -> str:
+    """POST .../v1/chat-messages"""
+    return f"{_api_v1_base(api_server)}/chat-messages"
+
+
+def _norm_conversation_id(s: str | None) -> str:
+    """比较 Dify 会话 id 时忽略大小写与连字符差异。"""
+    if s is None:
+        return ""
+    return str(s).strip().lower().replace("-", "")
+
+
+def extract_conversation_name_from_chat_response(data: dict | None) -> str | None:
+    """
+    从 POST /v1/chat-messages（blocking）响应中解析会话展示名。
+    Dify 可能在顶层或嵌套对象中返回 `name`（与 GET /conversations 的 data[].name 同源语义）。
+    """
+    if not isinstance(data, dict):
+        return None
+    n = data.get("name")
+    if isinstance(n, str) and n.strip():
+        return n.strip()[:255]
+    conv = data.get("conversation")
+    if isinstance(conv, dict):
+        cn = conv.get("name")
+        if isinstance(cn, str) and cn.strip():
+            return cn.strip()[:255]
+    meta = data.get("metadata")
+    if isinstance(meta, dict):
+        for key in ("conversation_name", "name", "title"):
+            v = meta.get(key)
+            if isinstance(v, str) and v.strip():
+                return v.strip()[:255]
+    return None
+
+
+async def fetch_dify_conversation_name(
+    api_server: str,
+    app_key: str,
+    conversation_id: str,
+    dify_user: str,
+    *,
+    max_pages: int = 15,
+    page_limit: int = 100,
+) -> str | None:
+    """
+    调用 Dify GET /v1/conversations，按 user 分页查找 conversation_id 对应的会话名称（name）。
+    见官方文档「获取会话列表」：data[].id、data[].name。
+    请求失败或未找到时返回 None，不抛异常，由业务层回退标题策略。
+    """
+    if not (conversation_id or "").strip():
+        return None
+    url = f"{_api_v1_base(api_server)}/conversations"
+    headers = {"Authorization": f"Bearer {app_key}"}
+    last_id: str | None = None
+    timeout = httpx.Timeout(60.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            for _ in range(max_pages):
+                params: dict[str, str | int] = {
+                    "user": dify_user,
+                    "limit": page_limit,
+                }
+                if last_id:
+                    params["last_id"] = last_id
+                try:
+                    resp = await client.get(url, headers=headers, params=params)
+                except httpx.RequestError:
+                    return None
+                if resp.status_code >= 400:
+                    return None
+                try:
+                    payload = resp.json()
+                except ValueError:
+                    return None
+                if not isinstance(payload, dict):
+                    return None
+                rows = payload.get("data") or []
+                for item in rows:
+                    if not isinstance(item, dict):
+                        continue
+                    if _norm_conversation_id(item.get("id")) != _norm_conversation_id(conversation_id):
+                        continue
+                    name = item.get("name")
+                    if isinstance(name, str) and name.strip():
+                        return name.strip()[:255]
+                    return None
+                if not payload.get("has_more") or not rows:
+                    break
+                last_id = rows[-1].get("id")
+                if not last_id:
+                    break
+    except Exception:
+        return None
+    return None
 
 
 async def iter_dify_chat_stream(
