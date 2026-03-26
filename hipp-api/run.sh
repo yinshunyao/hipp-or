@@ -289,7 +289,8 @@ bootstrap() {
 
   require_database_url
 
-  run_db_init
+  # 首次启动也走统一的库检查流程：可在 1049 时先自动建库，再按缺表决定是否 init。
+  ensure_db_schema_before_run
 }
 
 if [[ ! -d "$VENV" ]]; then
