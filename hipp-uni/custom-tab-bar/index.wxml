@@ -1,0 +1,36 @@
+<view wx:if="{{ tabBarVisible }}">
+  <van-tabbar
+    custom-class="custom-vant-tabbar {{ tabBarThemeClass }}"
+    style="background: {{ tabBarBg }}; border-top: 1px solid {{ tabBarBorderColor }};"
+    active="{{ activePath }}"
+    active-color="{{ activeColor }}"
+    inactive-color="{{ inactiveColor }}"
+    fixed="{{ true }}"
+    border="{{ false }}"
+    safe-area-inset-bottom="{{ true }}"
+    bind:change="onChange"
+  >
+    <block wx:for="{{ list }}" wx:key="path">
+      <van-tabbar-item wx:if="{{ !item.slotIcon }}" custom-class="custom-tab-item" name="{{ item.path }}" icon="{{ item.icon }}">
+        {{ item.text }}
+      </van-tabbar-item>
+      <van-tabbar-item wx:else custom-class="custom-tab-item" name="{{ item.path }}">
+        <van-icon
+          slot="icon"
+          name="{{ item.slotIconName }}"
+          color="{{ inactiveColor }}"
+          size="{{ iconSize }}"
+          custom-class="van-tabbar-item__icon__inner"
+        />
+        <van-icon
+          slot="icon-active"
+          name="{{ item.slotIconName }}"
+          color="{{ activeColor }}"
+          size="{{ iconSize }}"
+          custom-class="van-tabbar-item__icon__inner"
+        />
+        {{ item.text }}
+      </van-tabbar-item>
+    </block>
+  </van-tabbar>
+</view>

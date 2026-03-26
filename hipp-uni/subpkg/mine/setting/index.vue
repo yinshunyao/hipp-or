@@ -1,5 +1,16 @@
 <template>
-  <view :class="themeClass" class="setting-container" :style="{ minHeight: `${windowHeight}px` }">
+  <view class="page-with-nav">
+    <uni-nav-bar
+      title="应用设置"
+      fixed
+      status-bar
+      :border="false"
+      :background-color="navBg"
+      :color="navText"
+      left-icon="left"
+      @clickLeft="navBack"
+    />
+    <view :class="themeClass" class="setting-container page-with-nav__body">
     <view class="menu-list">
       <view class="list-cell" @click="toggleTheme">
         <view class="menu-item-box">
@@ -10,38 +21,23 @@
           </view>
         </view>
       </view>
-      <view class="list-cell list-cell-arrow" @click="handleToPwd">
-        <view class="menu-item-box"><view class="iconfont icon-password menu-icon"></view><view>修改密码</view></view>
-      </view>
-      <view class="list-cell list-cell-arrow" @click="handleToUpgrade">
-        <view class="menu-item-box"><view class="iconfont icon-refresh menu-icon"></view><view>检查更新</view></view>
-      </view>
-      <view class="list-cell list-cell-arrow" @click="handleCleanTmp">
-        <view class="menu-item-box"><view class="iconfont icon-clean menu-icon"></view><view>清理缓存</view></view>
-      </view>
     </view>
-    <view class="logout-wrap">
-      <button class="logout-btn" hover-class="logout-btn--hover" @click="handleLogout">
-        <text class="logout-text">退出登录</text>
-      </button>
     </view>
   </view>
 </template>
 
 <script>
 import { themeMixin } from '@/common/mixins/theme.js'
+import navBackMixin from '@/common/mixins/nav-back.js'
 export default {
-  mixins: [themeMixin],
-  data() { return { windowHeight: uni.getSystemInfoSync().windowHeight } },
+  mixins: [themeMixin, navBackMixin],
   computed: {
-    isDarkMode() { return this.$store.state.theme.mode === 'dark' }
+    isDarkMode() { return this.$store.state.theme.mode === 'dark' },
+    navBg() { return this.isDarkMode ? '#1C1B22' : '#FFFFFF' },
+    navText() { return this.isDarkMode ? '#F0ECE2' : '#1F1F1F' }
   },
   methods: {
-    toggleTheme() { this.$store.dispatch('theme/toggle') },
-    handleToPwd() { this.$tab.navigateTo('/subpkg/mine/pwd/index') },
-    handleToUpgrade() { this.$modal.showToast('模块建设中~') },
-    handleCleanTmp() { this.$modal.showToast('模块建设中~') },
-    handleLogout() { this.$modal.confirm('确定注销并退出系统吗？').then(() => this.$store.dispatch('auth/LogOut')) }
+    toggleTheme() { this.$store.dispatch('theme/toggle') }
   }
 }
 </script>
@@ -81,14 +77,4 @@ export default {
   background: var(--t-accent-text);
 }
 
-.logout-wrap { padding: 60rpx 30rpx 0; }
-.logout-btn {
-  width: 100%; height: 96rpx; border-radius: 48rpx;
-  background: var(--t-error-bg); border: 2rpx solid var(--t-error-border);
-  display: flex; align-items: center; justify-content: center;
-  transition: background-color 0.2s ease;
-}
-.logout-btn::after { border: none; }
-.logout-btn--hover { opacity: 0.85; }
-.logout-text { font-size: 32rpx; font-weight: 500; color: var(--t-error); }
 </style>

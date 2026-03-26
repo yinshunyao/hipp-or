@@ -139,6 +139,9 @@ DIFY_HTTPX_VERIFY = env_bool("HIPP_DIFY_HTTPX_VERIFY", True)
 
 # 默认密码，"0" 默认为手机号后六位
 DEFAULT_PASSWORD = "0"
+# 微信小程序配置（优先读取 .env）
+WECHAT_APPID = env_str("WECHAT_APPID", "")
+WECHAT_KEY = env_str("WECHAT_KEY", "")
 # 默认头像
 DEFAULT_AVATAR = "https://vv-reserve.oss-cn-hangzhou.aliyuncs.com/avatar/2023-01-27/1674820804e81e7631.png"
 # 默认登陆时最大输入密码或验证码错误次数

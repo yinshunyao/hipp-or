@@ -16,6 +16,7 @@ const state = {
   isUser: storage.get(auth.isUser) || false,
   isUserOpenid: storage.get(auth.isUserOpenid) || false,
   isResetPassword: storage.get(auth.isResetPassword) || false,
+  userType: storage.get(auth.userType) || 'system',
   name: storage.get(auth.name),
   nickname: storage.get(auth.nickname),
   gender: storage.get(auth.gender),
@@ -41,6 +42,10 @@ const mutations = {
   SET_IS_RESET_PASSWORD: (state, isResetPassword) => {
     state.isResetPassword = isResetPassword
     storage.set(auth.isResetPassword, isResetPassword)
+  },
+  SET_USER_TYPE: (state, userType) => {
+    state.userType = userType
+    storage.set(auth.userType, userType || 'system')
   },
   SET_NAME: (state, name) => {
     state.name = name
@@ -93,6 +98,7 @@ const actions = {
           commit('SET_REFRESH_TOKEN', res.data.refresh_token)
           commit('SET_IS_USER_OPENID', res.data.is_wx_server_openid)
           commit('SET_IS_RESET_PASSWORD', res.data.is_reset_password)
+          commit('SET_USER_TYPE', res.data.user_type || 'system')
           resolve(res)
         })
         .catch((error) => {
@@ -103,15 +109,17 @@ const actions = {
 
   // 微信一键登录
   // 微信文档：https://developers.weixin.qq.com/miniprogram/dev/OpenApiDoc/user-info/phone-number/getPhoneNumber.html
-  wxLogin({ commit }, code) {
+  wxLogin({ commit }, payload) {
+    const requestPayload = typeof payload === 'string' ? { code: payload } : payload
     return new Promise((resolve, reject) => {
-      wxCodeLogin(code)
+      wxCodeLogin(requestPayload.code, requestPayload.nickname, requestPayload.avatar)
         .then((res) => {
           setToken(`${res.data.token_type} ${res.data.access_token}`)
           commit('SET_TOKEN', `${res.data.token_type} ${res.data.access_token}`)
           commit('SET_REFRESH_TOKEN', res.data.refresh_token)
           commit('SET_IS_USER_OPENID', res.data.is_wx_server_openid)
           commit('SET_IS_RESET_PASSWORD', res.data.is_reset_password)
+          commit('SET_USER_TYPE', res.data.user_type || 'wechat')
           resolve(res)
         })
         .catch((error) => {
@@ -171,6 +179,7 @@ const actions = {
       commit('SET_CREATE_DATETIME', '')
       commit('SET_IS_USER_OPENID', false)
       commit('SET_IS_RESET_PASSWORD', false)
+      commit('SET_USER_TYPE', 'system')
       commit('SET_ISUSER', false)
       removeToken()
       removeRefreshToken()

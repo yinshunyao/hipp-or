@@ -3,7 +3,7 @@
 # 若 .venv 已存在但库被清空（表不存在），启动前会自动再次执行 init（迁移 + 种子数据）。
 # 跳过自动修复：export HIPP_SKIP_AUTO_INIT=1
 # 关键配置均在项目根目录 .env（见 .env.example）：数据库、Redis、HTTP 绑定 HIPP_BIND_HOST / HIPP_BIND_PORT 等。
-# 前置：已创建空数据库；MySQL 连接信息已注入环境。
+# 前置：MySQL 连接信息已注入环境；若目标数据库不存在，脚本会尝试自动创建。
 #
 # Apple Silicon：请用 arm64 的 Python 创建 .venv；若 asyncmy 报 incompatible architecture，请删 .venv 后指定
 #   PYTHON=/opt/homebrew/bin/python3.10 ./run.sh
@@ -178,19 +178,49 @@ try:
     from sqlalchemy.engine.url import make_url
 
     import pymysql
+    from pymysql.err import OperationalError
 except Exception as e:
     print("[run.sh] 无法导入依赖以检查数据表：", e, file=sys.stderr)
     sys.exit(1)
 
-try:
-    u = make_url(resolve_alembic_sync_url())
-    conn = pymysql.connect(
+def _connect_with_database(db_name):
+    return pymysql.connect(
         host=u.host,
         port=int(u.port or 3306),
         user=u.username or "",
         password=u.password or "",
-        database=u.database or "",
+        database=db_name or "",
     )
+
+def _ensure_database_exists(db_name):
+    conn_bootstrap = _connect_with_database(None)
+    try:
+        with conn_bootstrap.cursor() as cur:
+            cur.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+        conn_bootstrap.commit()
+    finally:
+        conn_bootstrap.close()
+
+try:
+    u = make_url(resolve_alembic_sync_url())
+    db_name = u.database or ""
+    conn = _connect_with_database(db_name)
+except OperationalError as e:
+    # 1049 = Unknown database
+    if e.args and e.args[0] == 1049:
+        if not db_name:
+            print("[run.sh] 数据库名称为空，无法自动创建数据库。", file=sys.stderr)
+            sys.exit(1)
+        try:
+            print(f"[run.sh] 数据库 `{db_name}` 不存在，正在自动创建…", file=sys.stderr)
+            _ensure_database_exists(db_name)
+            conn = _connect_with_database(db_name)
+        except Exception as ce:
+            print(f"[run.sh] 自动创建数据库 `{db_name}` 失败：{ce}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        print("[run.sh] 连接数据库失败，无法检查表：", e, file=sys.stderr)
+        sys.exit(1)
 except Exception as e:
     print("[run.sh] 连接数据库失败，无法检查表：", e, file=sys.stderr)
     sys.exit(1)

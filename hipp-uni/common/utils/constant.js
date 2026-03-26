@@ -2,6 +2,7 @@ export const auth = {
   isUser: 'vuex_auth_isUser',
   isUserOpenid: 'vuex_auth_isUserOpenid',
   isResetPassword: 'vuex_auth_isResetPassword',
+  userType: 'vuex_auth_userType',
   name: 'vuex_auth_name',
   nickname: 'vuex_auth_nickname',
   gender: 'vuex_auth_gender',

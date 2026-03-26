@@ -40,8 +40,13 @@ class VadminUser(BaseModel):
     last_ip: Mapped[str | None] = mapped_column(String(50), comment="最后一次登录IP")
     last_login: Mapped[datetime | None] = mapped_column(DateTime, comment="最近一次登录时间")
     is_staff: Mapped[bool] = mapped_column(Boolean, default=False, comment="是否为工作人员")
+    user_type: Mapped[str] = mapped_column(String(16), nullable=False, default="system", comment="用户类型(system/wechat)")
+    is_system_created: Mapped[bool] = mapped_column(Boolean, default=True, comment="是否由系统/后台创建（多标签「系统创建」）")
+    is_blocked: Mapped[bool] = mapped_column(Boolean, default=False, comment="是否拉黑（禁止登录）")
     wx_server_openid: Mapped[str | None] = mapped_column(String(255), comment="服务端微信平台openid")
     is_wx_server_openid: Mapped[bool] = mapped_column(Boolean, default=False, comment="是否已有服务端微信平台openid")
+    wx_nickname: Mapped[str | None] = mapped_column(String(128), nullable=True, comment="微信昵称")
+    wx_avatar: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="微信头像")
 
     roles: Mapped[set[VadminRole]] = relationship(secondary=vadmin_auth_user_roles)
     depts: Mapped[set[VadminDept]] = relationship(secondary=vadmin_auth_user_depts)

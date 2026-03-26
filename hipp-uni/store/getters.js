@@ -2,6 +2,7 @@ const getters = {
   isUser: (state) => state.auth.isUser,
   isUserOpenid: (state) => state.auth.isUserOpenid,
   isResetPassword: (state) => state.auth.isResetPassword,
+  userType: (state) => state.auth.userType,
   token: (state) => state.auth.token,
   avatar: (state) => state.auth.avatar,
   name: (state) => state.auth.name,

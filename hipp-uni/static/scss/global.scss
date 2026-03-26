@@ -1,3 +1,18 @@
+/* 自定义导航栏 + 主内容区：避免 100% 高度在占位下方塌陷 */
+.page-with-nav {
+	height: 100%;
+	min-height: 100vh;
+	display: flex;
+	flex-direction: column;
+	box-sizing: border-box;
+}
+.page-with-nav__body {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
 .text-center {
 	text-align: center;
 }
@@ -82,9 +97,9 @@
 
 		.menu-icon {
 			color: var(--t-accent);
-			font-size: 18px;
-			margin-right: 20rpx;
-			width: 44rpx;
+			font-size: $mp-account-menu-icon;
+			margin-right: $mp-gap-5;
+			width: $mp-account-menu-icon-col;
 			text-align: center;
 		}
 

@@ -51,9 +51,18 @@ def test_strip_finish_status_prefix_colon_variants():
     assert strip_finish_status_prefix("结束状态：False\n内容") == "内容"
 
 
+def test_strip_finish_status_prefix_spacing_and_case_variants():
+    assert strip_finish_status_prefix("结束状态false\n内容") == "内容"
+    assert strip_finish_status_prefix("结束状态 FALSE\n内容") == "内容"
+    assert strip_finish_status_prefix("结束状态：true\n内容") == "内容"
+
+
 def test_parse_topic_finished_from_raw_answer():
     assert parse_topic_finished_from_raw_answer("结束状态 True\n正文") is True
     assert parse_topic_finished_from_raw_answer("结束状态: True\n正文") is True
     assert parse_topic_finished_from_raw_answer("结束状态：False\n正文") is False
+    assert parse_topic_finished_from_raw_answer("结束状态true\n正文") is True
+    assert parse_topic_finished_from_raw_answer("结束状态 false\n正文") is False
+    assert parse_topic_finished_from_raw_answer("结束状态：TRUE\n正文") is True
     assert parse_topic_finished_from_raw_answer("正文") is False
     assert parse_topic_finished_from_raw_answer("") is False

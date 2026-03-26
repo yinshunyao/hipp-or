@@ -61,6 +61,8 @@ async def api_login_for_access_token(
     result = VadminUser.verify_password(data.password, user.password)
     if not result:
         raise CustomException(status_code=error_code, code=error_code, msg="账号或密码错误")
+    if getattr(user, "is_blocked", False):
+        raise CustomException(status_code=error_code, code=error_code, msg="此账号已被拉黑")
     if not user.is_active:
         raise CustomException(status_code=error_code, code=error_code, msg="此账号已被冻结")
     elif not user.is_staff:
@@ -103,7 +105,8 @@ async def login_for_access_token(
             "refresh_token": refresh_token,
             "token_type": "bearer",
             "is_reset_password": result.user.is_reset_password,
-            "is_wx_server_openid": result.user.is_wx_server_openid
+            "is_wx_server_openid": result.user.is_wx_server_openid,
+            "user_type": result.user.user_type
         }
         await VadminLoginRecord.create_login_record(db, data, True, request, resp)
         return SuccessResponse(resp)
@@ -112,7 +115,7 @@ async def login_for_access_token(
         return ErrorResponse(msg=str(e))
 
 
-@app.post("/wx/login", summary="微信服务端一键登录", description="员工登录通道")
+@app.post("/wx/login", summary="微信服务端一键登录", description="小程序微信授权登录")
 async def wx_login_for_access_token(
     request: Request,
     data: WXLoginForm,
@@ -127,10 +130,15 @@ async def wx_login_for_access_token(
         if not telephone:
             raise ValueError("无效Code")
         data.telephone = telephone
-        user = await UserDal(db).get_data(telephone=telephone, v_return_none=True)
-        if not user:
-            raise ValueError("手机号不存在")
-        elif not user.is_active:
+        user_dal = UserDal(db)
+        user = await user_dal.create_or_update_wx_user(
+            telephone=telephone,
+            nickname=data.nickname,
+            avatar=data.avatar
+        )
+        if getattr(user, "is_blocked", False):
+            raise ValueError("此账号已被拉黑")
+        if not user.is_active:
             raise ValueError("手机号已被冻结")
     except ValueError as e:
         await VadminLoginRecord.create_login_record(db, data, False, request, {"message": str(e)})
@@ -151,7 +159,8 @@ async def wx_login_for_access_token(
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "is_reset_password": user.is_reset_password,
-        "is_wx_server_openid": user.is_wx_server_openid
+        "is_wx_server_openid": user.is_wx_server_openid,
+        "user_type": user.user_type
     }
     await VadminLoginRecord.create_login_record(db, data, True, request, resp)
     return SuccessResponse(resp)
@@ -163,7 +172,10 @@ async def get_menu_list(auth: Auth = Depends(FullAdminAuth())):
 
 
 @app.post("/token/refresh", summary="刷新Token")
-async def token_refresh(refresh: str = Body(..., title="刷新Token")):
+async def token_refresh(
+    refresh: str = Body(..., title="刷新Token"),
+    db: AsyncSession = Depends(db_getter),
+):
     error_code = status.HTTP_401_UNAUTHORIZED
     try:
         payload = jwt.decode(refresh, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
@@ -176,6 +188,14 @@ async def token_refresh(refresh: str = Body(..., title="刷新Token")):
         return ErrorResponse("无效认证，请您重新登录", code=error_code, status=error_code)
     except jwt.exceptions.ExpiredSignatureError:
         return ErrorResponse("登录已超时，请您重新登录", code=error_code, status=error_code)
+
+    user = await UserDal(db).get_data(telephone=telephone, password=password, v_return_none=True)
+    if not user:
+        return ErrorResponse("未认证，请您重新登录", code=error_code, status=error_code)
+    if getattr(user, "is_blocked", False):
+        return ErrorResponse("此账号已被拉黑", code=error_code, status=error_code)
+    if not user.is_active:
+        return ErrorResponse("此账号已被冻结", code=error_code, status=error_code)
 
     access_token = LoginManage.create_token({"sub": telephone, "is_refresh": False, "password": password})
     expires = timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)

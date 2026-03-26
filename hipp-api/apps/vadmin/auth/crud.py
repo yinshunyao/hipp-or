@@ -37,6 +37,8 @@ from datetime import datetime
 
 
 class UserDal(DalBase):
+    USER_TYPE_SYSTEM = "system"
+    USER_TYPE_WECHAT = "wechat"
     import_headers = [
         {"label": "姓名", "field": "name", "required": True},
         {"label": "昵称", "field": "nickname", "required": False},
@@ -50,6 +52,32 @@ class UserDal(DalBase):
         self.db = db
         self.model = models.VadminUser
         self.schema = schemas.UserSimpleOut
+
+    async def out_dict(
+            self,
+            obj: Any,
+            v_options: list[_AbstractLoad] = None,
+            v_return_obj: bool = False,
+            v_schema: Any = None
+    ) -> Any:
+        if v_options:
+            obj = await self.get_data(obj.id, v_options=v_options)
+        if v_return_obj:
+            return obj
+        if v_schema:
+            d = v_schema.model_validate(obj).model_dump()
+            if v_schema is schemas.UserOut:
+                d["user_tags"] = schemas.compute_user_tags(obj)
+            return d
+        return self.schema.model_validate(obj).model_dump()
+
+    async def set_user_blocked(self, data_id: int, is_blocked: bool) -> Any:
+        obj = await self.get_data(
+            data_id,
+            v_options=[joinedload(self.model.roles), joinedload(self.model.depts)])
+        obj.is_blocked = is_blocked
+        await self.flush(obj)
+        return await self.out_dict(obj, v_schema=schemas.UserOut)
 
     async def recursion_get_dept_ids(
             self,
@@ -113,6 +141,47 @@ class UserDal(DalBase):
         user.last_login = datetime.now()
         await self.db.flush()
 
+    @staticmethod
+    def build_wechat_profile_name(nickname: str | None, telephone: str) -> str:
+        normalized_nickname = (nickname or "").strip()
+        if normalized_nickname:
+            return normalized_nickname[:50]
+        suffix = (telephone or "")[-4:] or "0000"
+        return f"微信用户{suffix}"
+
+    async def create_or_update_wx_user(self, telephone: str, nickname: str | None, avatar: str | None):
+        user = await self.get_data(telephone=telephone, v_return_none=True)
+        resolved_nickname = (nickname or "").strip() or None
+        resolved_avatar = (avatar or "").strip() or None
+        if not user:
+            name = self.build_wechat_profile_name(resolved_nickname, telephone)
+            default_password = f"wx_{telephone}"
+            user = self.model(
+                telephone=telephone,
+                name=name,
+                nickname=resolved_nickname or name,
+                avatar=resolved_avatar or settings.DEFAULT_AVATAR,
+                password=self.model.get_password_hash(default_password),
+                is_staff=True,
+                is_active=True,
+                is_system_created=False,
+                user_type=self.USER_TYPE_WECHAT,
+                wx_nickname=resolved_nickname,
+                wx_avatar=resolved_avatar,
+            )
+            await self.flush(user)
+            return user
+
+        user.user_type = self.USER_TYPE_WECHAT
+        if resolved_nickname:
+            user.wx_nickname = resolved_nickname
+            user.nickname = resolved_nickname
+        if resolved_avatar:
+            user.wx_avatar = resolved_avatar
+            user.avatar = resolved_avatar
+        await self.db.flush()
+        return user
+
     async def create_data(
             self,
             data: schemas.UserIn,
@@ -134,7 +203,9 @@ class UserDal(DalBase):
         password = data.telephone[5:12] if settings.DEFAULT_PASSWORD == "0" else settings.DEFAULT_PASSWORD
         data.password = self.model.get_password_hash(password)
         data.avatar = data.avatar if data.avatar else settings.DEFAULT_AVATAR
-        obj = self.model(**data.model_dump(exclude={'role_ids', "dept_ids"}))
+        payload = data.model_dump(exclude={'role_ids', "dept_ids"})
+        payload["is_system_created"] = True
+        obj = self.model(**payload)
         if data.role_ids:
             roles = await RoleDal(self.db).get_datas(limit=0, id=("in", data.role_ids), v_return_objs=True)
             for role in roles:
@@ -193,6 +264,8 @@ class UserDal(DalBase):
         :param data:
         :return:
         """
+        if not self.model.verify_password(data.old_password, user.password):
+            raise CustomException(msg="当前密码错误", code=400)
         if data.password != data.password_two:
             raise CustomException(msg="两次密码不一致", code=400)
         result = test_password(data.password)

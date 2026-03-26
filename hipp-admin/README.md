@@ -13,9 +13,11 @@ pnpm run dev
 ```
 
 # 发布打包
-
 ```bash
-pnpm run build:pro
+# 使用.env.pro配置
+#pnpm run build:pro
+# 使用 .env 配置
+pnpm run build
 ```
 
 # 特别说明

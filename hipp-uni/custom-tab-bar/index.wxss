@@ -1,0 +1,51 @@
+/* wxss 不能 require JS；色值 / 字号与 theme.js、uni.scss $mp-tabbar-* 保持一致 */
+.custom-vant-tabbar {
+  --tabbar-height: 56px;
+  --tabbar-item-font-size: 16px;
+  --tabbar-item-icon-size: 28px;
+  --tabbar-item-margin-bottom: 5px;
+  --tabbar-item-line-height: 1.15;
+  border-radius: 0;
+  background: #ffffff; /* theme.js SURFACE_BG */
+  border-top: 1px solid rgba(24, 59, 99, 0.08);
+}
+
+.custom-vant-tabbar--light {
+  background: #ffffff;
+  border-top: 1px solid rgba(24, 59, 99, 0.08);
+}
+
+.custom-vant-tabbar--dark {
+  background: #1c1b22;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.custom-tab-item {
+  opacity: 0.84;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.custom-tab-item.van-tabbar-item--active {
+  opacity: 1;
+  font-weight: 700;
+}
+
+.custom-tab-item .van-tabbar-item__icon__inner {
+  transition: transform 0.2s ease;
+}
+
+.custom-tab-item.van-tabbar-item--active .van-tabbar-item__icon__inner {
+  transform: translateY(-1px) scale(1.08);
+}
+
+.custom-tab-icon {
+  mode: aspectFit;
+  align-items: center;
+  justify-content: center;
+  color: #6b6b6b; /* theme.js INACTIVE_COLOR */
+}
+
+.custom-tab-icon--active {
+  color: #b46b00; /* theme.js ACTIVE_COLOR */
+}

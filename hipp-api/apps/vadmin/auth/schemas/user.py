@@ -9,7 +9,7 @@ from __future__ import annotations
 # @desc           : pydantic 模型，用于数据库序列化操作
 
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_core.core_schema import FieldValidationInfo
 from core.data_types import Telephone, DatetimeStr, Email
 from .role import RoleSimpleOut
@@ -26,6 +26,9 @@ class User(BaseModel):
     is_staff: bool | None = True
     gender: str | None = "0"
     is_wx_server_openid: bool | None = False
+    user_type: str | None = "system"
+    wx_nickname: str | None = None
+    wx_avatar: str | None = None
 
 
 class UserIn(User):
@@ -71,6 +74,8 @@ class UserSimpleOut(User):
     update_datetime: DatetimeStr
     create_datetime: DatetimeStr
 
+    is_system_created: bool = True
+    is_blocked: bool = False
     is_reset_password: bool | None = None
     last_login: DatetimeStr | None = None
     last_ip: str | None = None
@@ -82,14 +87,31 @@ class UserPasswordOut(UserSimpleOut):
     password: str
 
 
+def compute_user_tags(user: object) -> list[str]:
+    """后台展示用多标签：系统创建 / 微信用户（与 OR 一致，不替代角色权限）。"""
+    tags: list[str] = []
+    if getattr(user, "is_system_created", True):
+        tags.append("系统创建")
+    ut = getattr(user, "user_type", None)
+    if ut == "wechat" or getattr(user, "wx_nickname", None) or getattr(user, "wx_avatar", None):
+        tags.append("微信用户")
+    return tags
+
+
+class UserBlockedIn(BaseModel):
+    is_blocked: bool
+
+
 class UserOut(UserSimpleOut):
     model_config = ConfigDict(from_attributes=True)
 
     roles: list[RoleSimpleOut] = []
     depts: list[DeptSimpleOut] = []
+    user_tags: list[str] = Field(default_factory=list)
 
 
 class ResetPwd(BaseModel):
+    old_password: str
     password: str
     password_two: str
 

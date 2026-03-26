@@ -201,11 +201,12 @@
 	}
 
 	.uni-nav-bar-text {
+		font-weight: 600;
 		/* #ifdef APP-PLUS */
 		font-size: 34rpx;
 		/* #endif */
 		/* #ifndef APP-PLUS */
-		font-size: 14px;
+		font-size: 32rpx;
 		/* #endif */
 	}
 

@@ -9,7 +9,7 @@ import httpx
 
 from core.exception import CustomException
 
-_FINISH_STATUS_RE = re.compile(r"^结束状态\s*[:：]?\s*(True|False)\s*$")
+_FINISH_STATUS_RE = re.compile(r"^结束状态\s*[:：]?\s*(true|false)\s*$", re.IGNORECASE)
 
 
 def parse_topic_finished_from_raw_answer(raw: str) -> bool:
@@ -20,7 +20,7 @@ def parse_topic_finished_from_raw_answer(raw: str) -> bool:
     m = _FINISH_STATUS_RE.match(lines[0].strip())
     if not m:
         return False
-    return m.group(1) == "True"
+    return m.group(1).lower() == "true"
 
 
 def strip_finish_status_prefix(text: str) -> str:

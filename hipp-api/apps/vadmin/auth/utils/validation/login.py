@@ -42,6 +42,8 @@ class LoginForm(BaseModel):
 class WXLoginForm(BaseModel):
     telephone: str | None = None
     code: str
+    nickname: str | None = None
+    avatar: str | None = None
     method: str = '2'  # 认证方式，0：密码登录，1：短信登录，2：微信一键登录
     platform: str = '1'  # 登录平台，0：PC端管理系统，1：移动端管理系统
 
@@ -91,6 +93,8 @@ class LoginValidation:
                     # 如果等于最大次数，那么就将用户 is_active=False
                     user.is_active = False
                     await db.flush()
+        elif getattr(user, "is_blocked", False):
+            self.result.msg = "此账号已被拉黑"
         elif not user.is_active:
             self.result.msg = "此账号已被冻结！"
         elif data.platform in ["0", "1"] and not user.is_staff:

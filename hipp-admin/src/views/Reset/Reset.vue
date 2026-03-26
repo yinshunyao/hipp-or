@@ -23,6 +23,20 @@ const footer = computed(() => appStore.getFooter)
 
 const formSchema = reactive<FormSchema[]>([
   {
+    field: 'old_password',
+    label: '当前密码',
+    component: 'InputPassword',
+    colProps: {
+      span: 24
+    },
+    componentProps: {
+      style: {
+        width: '100%'
+      },
+      placeholder: '请输入当前密码'
+    }
+  },
+  {
     field: 'password',
     label: '新密码',
     component: 'InputPassword',
@@ -53,6 +67,7 @@ const formSchema = reactive<FormSchema[]>([
 ])
 
 const rules = {
+  old_password: [required()],
   password: [
     required(),
     { min: 8, max: 16, message: '长度需为8-16个字符,请重新输入。', trigger: 'blur' }

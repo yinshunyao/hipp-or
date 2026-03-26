@@ -1,5 +1,16 @@
 <template>
-  <view class="help-container">
+  <view class="page-with-nav">
+    <uni-nav-bar
+      title="常见问题"
+      fixed
+      status-bar
+      :border="false"
+      background-color="#FFFFFF"
+      color="#1F1F1F"
+      left-icon="left"
+      @clickLeft="navBack"
+    />
+    <view class="help-container page-with-nav__body">
     <view v-for="(item, findex) in list" :key="findex" :title="item.name" class="list-title">
       <view class="text-title">
         <view>{{ item.name }}</view>
@@ -17,13 +28,16 @@
         </view>
       </view>
     </view>
+    </view>
   </view>
 </template>
 
 <script>
 import { getIssueCategoryList } from '@/common/request/api/vadmin/help/issue.js'
+import navBackMixin from '@/common/mixins/nav-back.js'
 
 export default {
+  mixins: [navBackMixin],
   data() {
     return {
       list: []

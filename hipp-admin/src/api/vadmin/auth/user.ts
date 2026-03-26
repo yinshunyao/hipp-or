@@ -16,6 +16,13 @@ export const putUserListApi = (data: any): Promise<IResponse> => {
   return request.put({ url: `/vadmin/auth/users/${data.id}`, data })
 }
 
+export const putUserBlockedApi = (
+  id: number,
+  data: { is_blocked: boolean }
+): Promise<IResponse> => {
+  return request.put({ url: `/vadmin/auth/users/${id}/blocked`, data })
+}
+
 export const getUserApi = (dataId: number): Promise<IResponse> => {
   return request.get({ url: `/vadmin/auth/users/${dataId}` })
 }

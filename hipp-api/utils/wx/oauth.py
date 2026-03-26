@@ -13,6 +13,7 @@ from core.logger import logger
 from utils.cache import Cache
 from utils.wx.wx_access_token import WxAccessToken
 from redis.asyncio import Redis
+from application import settings
 
 
 class WXOAuth:
@@ -35,11 +36,21 @@ class WXOAuth:
         """
         获取配置信息
         """
+        env_appid = (settings.WECHAT_APPID or "").strip()
+        env_secret = (settings.WECHAT_KEY or "").strip()
+        if env_appid and env_secret:
+            self.appid = env_appid
+            self.secret = env_secret
+            return
+
         if not self.tab_name:
-            logger.error(f"请选择认证的微信平台")
+            logger.error("请选择认证的微信平台")
+            return
         wx_config = await Cache(self.rd).get_tab_name(self.tab_name, retry)
         self.appid = wx_config.get("wx_server_app_id")
         self.secret = wx_config.get("wx_server_app_secret")
+        if not self.appid or not self.secret:
+            logger.error("微信配置缺失：请设置 WECHAT_APPID/WECHAT_KEY 或后台微信配置")
 
     async def get_code2session(self, code: str) -> dict:
         """

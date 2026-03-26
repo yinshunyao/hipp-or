@@ -1,8 +1,8 @@
 {
-  "name": "vue-element-plus-admin",
-  "version": "2.7.0",
+  "name": "hipp管理后端",
+  "version": "1.0.0",
   "description": "一套基于vue3、element-plus、typesScript、vite4的后台集成方案。",
-  "author": "Archer <502431556@qq.com>",
+  "author": "in <94155682@qq.com>",
   "private": false,
   "scripts": {
     "i": "pnpm install",
@@ -10,6 +10,7 @@
     "ts:check": "pnpm vue-tsc --noEmit --skipLibCheck",
     "build:pro": "pnpm vite build --mode pro",
     "build:dev": "pnpm vite build --mode dev",
+    "build": "pnpm vite build",
     "serve:pro": "pnpm vite preview --mode pro",
     "serve:dev": "pnpm vite preview --mode dev",
     "npm:check": "pnpx npm-check-updates -u",

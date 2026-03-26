@@ -1,7 +1,13 @@
 # 发布草稿（kinit）
 
+## 2026-03-26（hipp-or）
+
+- hipp-uni / hipp-api：修复「我的」页两处问题——`修改密码`、`关于我们` 页面顶部导航栏改为主题变量，深色模式下不再固定白底；修改密码流程新增「当前密码」必填与后端旧密码正确性校验（`ResetPwd.old_password` + `reset_current_password` 校验），防止未验证旧密码直接改密。见 `doc/91-qa/【小程序我的页】修改密码与关于我们未适配深色模式且缺少当前密码校验.md`。
+
 ## 2026-03-24（hipp-or）
 
+- hipp-api：`run.sh` 增加数据库自愈能力——连接检查阶段遇到 MySQL `1049 (Unknown database)` 时，自动创建目标数据库（`utf8mb4`）后继续执行核心表检查；缺表仍按原逻辑执行 `main.py init`，其余连接错误保持失败退出。见 `doc/02-dr/02 登录认证与初始化.md`、`doc/03-tr/02 登录认证与初始化测试设计.md`。
+- hipp-api / hipp-admin：**用户管理定制**——`vadmin_auth_user` 增加 `is_system_created`、`is_blocked`；列表/详情返回 `user_tags`（系统创建/微信用户）；`PUT /vadmin/auth/users/{id}/blocked`；登录与 `token/refresh` 拦截拉黑。管理端用户表展示标签与拉黑操作。迁移 `a1b2c3d4e5f6_user_system_created_blocked`。见 `doc/01-or/【后台管理】用户管理定制功能.md`、`doc/02-dr/05 系统管理/后台用户管理定制设计.md`。
 - hipp-api / hipp-admin：**智能客服类型**——`vadmin_agent.service_type`（可空）；列表查询参数 `service_type`；连通性测试与保存写入类型。管理端配置弹窗 `ElSelect` 可选项「需求分析」「商业评估」并支持 `allow-create` 自定义；列表列与搜索区类型筛选。Alembic：`b2c4e6d8a0f1_vadmin_agent_service_type`。小程序 `AgentSnippetOut` 增加 `service_type` 字段。见 `doc/01-or/【智能客服管理】Dify智能体接入管理.md`、`doc/02-dr/03 智能客服管理/Dify智能体接入管理设计.md`。
 - hipp-uni：角色为 **`人工客服`** 时，「对话」Tab 展示客服收件箱（`kind=staff`），导航栏标题「客服接待」；「我的」中移除「客服接待」菜单；`subpkg/chat/staff-inbox` 改为跳转「对话」Tab。见 `doc/02-dr/05 人工客服/需求类话题人工客服设计.md`。
 - hipp-api：**人工客服单会话合并多归档**——`POST /mp/chat/human-support/sessions` 在已存在未结束（`is_topic_closed=false`）的人工会话时，向该会话追加 `system` 归档提示，不新建会话、不重新分配客服；同一归档来源复用仍按会话行或历史 `system` 中 `来源会话 ID：{id}` 判断。见 `doc/02-dr/05 人工客服/需求类话题人工客服设计.md`、`doc/01-or/【人工客服】 需求类话题响应.md`。
@@ -9,8 +15,10 @@
 - hipp-api / hipp-uni：**对话 Tab 收件箱仅展示已归档话题**——`GET /mp/chat/inbox?kind=session` 不返回 `kind=agent`，仅 `is_topic_closed=true` 的 `kind=session`；**省略 `kind`** 时仍为合并列表（智能体+会话）便于调试。`hipp-uni` 的 `getChatInbox` 固定传 `kind=session`。置顶分区整体在前，分区内按最近活跃倒序。见 `doc/01-or/【小程序对话】用户智能对话.md`、`doc/02-dr/04 小程序对话/小程序用户对话设计.md`。
 - hipp-uni（修复）：`pages/requirement/index`、`pages/business/index`、`subpkg/chat/chat`、`pages/chat/index` 避免根布局 `100vh` 与微信原生导航栏叠层；`theme.js` 在 `MP-WEIXIN` 下不再调用 `uni.setTabBarStyle`（自定义 TabBar 无效且可能干扰导航）。见 `doc/91-qa/【小程序】需求页左上角返回不可见.md`。
 - hipp-uni（回退）：关闭 `tabBar.custom`，移除 `custom-tab-bar` 与 `mpTabBarMixin`；恢复微信原生底栏与 `theme.js` 中 `uni.setTabBarStyle`（自定义 Vant TabBar 在 uni-app 编译后未稳定挂载，导致底栏整段不可见）。底栏仍用 `pages.json` 中 `iconPath` PNG。
+- hipp-uni：按 `doc/01-or/【前段UI】 UI需求.md` 将底部导航改为自定义 TabBar：`pages.json` 启用 `tabBar.custom=true`，新增 `custom-tab-bar/index.vue`（纯自绘，不使用 Vant tabbar），并为话题/需求/商业/我的四页补齐底部安全间距，避免输入区和内容被遮挡。
 - hipp-uni：`pages/chat/index` 收件箱搜索栏改为 Vant `van-search`（`input-align="center"`、占位「请输入搜索关键词」），移除原自定义搜索框样式；`pages.json` 注册 `/static/wxcomponents/vant-weapp/search/index`。
 - hipp-uni（微信小程序）：会话只读时底部说明使用 Vant `van-notice-bar`，仅 `wrapable` + `scrollable=false` + `text`，沿用组件默认样式（不绑主题色、不加 `custom-class`）；`@vant/weapp/lib` 在 `static/wxcomponents/vant-weapp`，`pages.json` 注册 `/static/wxcomponents/vant-weapp/notice-bar/index`。升级 Vant 时执行 `scripts/sync-vendor-vant-weapp.sh`。非微信端仍为原 `readonly-tip` 样式。见 `doc/01-or/【小程序对话】用户智能对话——话题归档功能.md`。
+- hipp-uni：`subpkg/chat/chat` 话题已结束时「联系人工客服」与底部 `NoticeBar` 提示改为纵向栈布局，去掉按钮 `fixed` 叠层，避免提示文案被遮挡；提示区不再重复叠加底部安全区内边距，并缩小消息列表底部留白，避免提示与输入框之间过高空白。见 `doc/91-qa/【小程序对话】话题已结束提示与人工客服按钮重叠.md`。
 - hipp-uni：`subpkg/chat/chat` 助手 Markdown 表格表体补全每行 `<tr>`，修复归档会话详情中表格多行错位为「多列竖条」的问题。见 `doc/91-qa/【小程序对话】归档会话详情Markdown表格行错位.md`。
 - hipp-api / hipp-uni：场景页（需求/商业）归档话题改为 `GET /mp/chat/agents/{agent_id}/archived-topics` 分页；时间线旧→新再接当前消息，`scrolltoupper` 加载更旧归档。见 `doc/91-qa/【小程序对话】场景页归档话题顺序错误与缺分页.md`。
 - hipp-api / hipp-uni：收件箱返回语义调整——进行中会话不再单独返回 `kind=session`，统一挂到 `kind=agent` 的 `row.session`；仅归档话题返回 `kind=session`。小程序点击 `kind=agent` 行优先直达已有进行中会话，否则创建新会话。见 `doc/91-qa/【小程序对话】收件箱kind返回与话题归档语义不一致.md`。

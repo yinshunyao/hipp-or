@@ -1,18 +1,34 @@
 <template>
-  <view>
-    <view class="view-title">
-      <view class="view-header">{{ title }}</view>
-      <text class="uni-body view-content">{{ content }}</text>
+  <view class="page-with-nav">
+    <uni-nav-bar
+      :title="barTitle"
+      fixed
+      status-bar
+      :border="false"
+      background-color="#FFFFFF"
+      color="#1F1F1F"
+      left-icon="left"
+      @clickLeft="navBack"
+    />
+    <view class="page-with-nav__body">
+      <view class="view-title">
+        <view class="view-header">{{ title }}</view>
+        <text class="uni-body view-content">{{ content }}</text>
+      </view>
     </view>
   </view>
 </template>
 
 <script>
+import navBackMixin from '@/common/mixins/nav-back.js'
+
 export default {
+  mixins: [navBackMixin],
   data() {
     return {
       title: '',
-      content: ''
+      content: '',
+      barTitle: '浏览文本'
     }
   },
   onLoad(options) {
@@ -23,17 +39,21 @@ export default {
       this.title = options.title
       this.content = options.content
     }
-    uni.setNavigationBarTitle({
-      title: options.title
-    })
+    const t = options.title || this.title
+    if (t) this.barTitle = t
   }
 }
 </script>
 
-<style scoped>
+<style lang="scss">
 page {
+  height: 100%;
+  box-sizing: border-box;
   background-color: #ffffff;
 }
+</style>
+
+<style scoped>
 
 .view-title {
   font-weight: bold;
@@ -48,7 +68,9 @@ page {
   line-height: 48rpx;
   margin-bottom: 12rpx;
 }
+</style>
 
+<style>
 .view-content {
   font-size: 26rpx;
   padding: 12px 5px 0;

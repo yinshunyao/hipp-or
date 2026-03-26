@@ -28,6 +28,7 @@ class UserParams(QueryParams):
             email: str | None = Query(None, title="邮箱"),
             is_active: bool | None = Query(None, title="是否可用"),
             is_staff: bool | None = Query(None, title="是否为工作人员"),
+            is_blocked: bool | None = Query(None, title="是否拉黑"),
             params: Paging = Depends()
     ):
         super().__init__(params)
@@ -36,5 +37,6 @@ class UserParams(QueryParams):
         self.email = ("like", email)
         self.is_active = is_active
         self.is_staff = is_staff
+        self.is_blocked = is_blocked
 
 

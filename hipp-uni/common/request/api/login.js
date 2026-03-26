@@ -23,9 +23,11 @@ export function setUserOpenid(code) {
 }
 
 // 使用微信一键登录
-export function wxCodeLogin(code) {
+export function wxCodeLogin(code, nickname = '', avatar = '') {
   const data = {
     code,
+    nickname,
+    avatar,
     method: '2',
     platform: '1'
   }

@@ -72,6 +72,19 @@ async def put_user(
     return SuccessResponse(await crud.UserDal(auth.db).put_data(data_id, data))
 
 
+@app.put("/users/{data_id}/blocked", summary="拉黑或解除拉黑")
+async def put_user_blocked(
+        data_id: int,
+        data: schemas.UserBlockedIn,
+        auth: Auth = Depends(FullAdminAuth(permissions=["auth.user.update"]))
+):
+    if data_id == auth.user.id:
+        return ErrorResponse("不能修改当前登录用户的拉黑状态")
+    if data_id == 1:
+        return ErrorResponse("不能修改超级管理员用户的拉黑状态")
+    return SuccessResponse(await crud.UserDal(auth.db).set_user_blocked(data_id, data.is_blocked))
+
+
 @app.get("/users/{data_id}", summary="获取用户信息")
 async def get_user(
         data_id: int,
@@ -101,6 +114,7 @@ async def post_user_current_update_avatar(file: UploadFile, auth: Auth = Depends
 @app.get("/user/admin/current/info", summary="获取当前管理员信息")
 async def get_user_admin_current_info(auth: Auth = Depends(FullAdminAuth())):
     result = schemas.UserOut.model_validate(auth.user).model_dump()
+    result["user_tags"] = schemas.compute_user_tags(auth.user)
     result["permissions"] = list(FullAdminAuth.get_user_permissions(auth.user))
     return SuccessResponse(result)
 

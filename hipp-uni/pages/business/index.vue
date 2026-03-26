@@ -1,5 +1,14 @@
 <template>
-  <view :class="themeClass" class="chat-container">
+  <view :class="themeClass" class="page-with-nav">
+    <uni-nav-bar
+      title="商业"
+      fixed
+      status-bar
+      :border="false"
+      :background-color="'var(--t-nav-bg)'"
+      :color="'var(--t-nav-text)'"
+    />
+    <view class="chat-container page-with-nav__body">
     <scroll-view
       :scroll-top="scrollTop"
       scroll-y
@@ -33,11 +42,12 @@
     </view>
     <view class="input-bar">
       <view class="input-shell">
-        <textarea v-model="inputText" class="input-text" :placeholder="inputPlaceholder" :placeholder-style="'color:' + tc.text3" :disabled="isReadonlySession || !sessionId" :auto-height="true" :maxlength="4000" :adjust-position="true" :cursor-spacing="24" :show-confirm-bar="false" confirm-type="send" @confirm="sendMessage" />
+        <textarea v-model="inputText" class="input-text" :placeholder="inputPlaceholder" :placeholder-style="'color:' + tc.text3" :disabled="isReadonlySession || !sessionId" :auto-height="true" :maxlength="4000" :adjust-position="true" :cursor-spacing="24" :show-confirm-bar="false" @keydown="onInputKeydown" />
         <button class="send-fab" :class="{ 'send-fab--disabled': !inputText.trim() || loading || isReadonlySession || !sessionId }" :disabled="!inputText.trim() || loading || isReadonlySession || !sessionId" hover-class="send-fab--hover" @click="sendMessage">
           <text class="send-fab-icon">↑</text>
         </button>
       </view>
+    </view>
     </view>
   </view>
 </template>
@@ -60,6 +70,15 @@ export default {
     this.ensureSceneSession().then(() => (this.sessionId ? this.bootstrap() : Promise.resolve())).finally(() => uni.stopPullDownRefresh())
   },
   methods: {
+    onInputKeydown(e) {
+      const evt = (e && e.detail) || e || {}
+      const keyCode = Number(evt.keyCode || evt.which || 0)
+      const isEnter = keyCode === 13
+      const hasCombo = !!(evt.ctrlKey || evt.metaKey)
+      if (!isEnter || !hasCombo) return
+      if (typeof evt.preventDefault === 'function') evt.preventDefault()
+      this.sendMessage()
+    },
     async ensureSceneSession() {
       try {
         const res = await resolveSceneAgent('business')
@@ -258,38 +277,85 @@ page {
 }
 </style>
 
-<style scoped>
-.chat-container { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--t-root); }
-.msg-list { flex: 1; padding: 24rpx 28rpx; overflow-y: auto; }
-.msg-item { display: flex; flex-direction: column; margin-bottom: 8rpx; }
-.archive-tip { align-self: center; max-width: 88%; min-width: 0; box-sizing: border-box; background: var(--t-accent-bg); border: 1rpx solid var(--t-border-focus); border-radius: 16rpx; padding: 14rpx 20rpx; margin: 10rpx 0 4rpx; display: flex; align-items: center; }
-.archive-tip-label { flex-shrink: 0; font-size: 24rpx; margin-right: 8rpx; }
+<style lang="scss" scoped>
+@import '@/uni.scss';
+
+.chat-container { display: flex; flex-direction: column; flex: 1; min-height: 0; background: var(--t-root); }
+.msg-list { flex: 1; padding: $mp-gap-6 $mp-gap-7; overflow-y: auto; }
+.msg-item { display: flex; flex-direction: column; margin-bottom: $mp-gap-2; }
+.archive-tip {
+  align-self: center; max-width: 88%; min-width: 0; box-sizing: border-box;
+  background: transparent; border: none;
+  padding: $mp-scene-archive-py $mp-scene-archive-px;
+  margin: $mp-scene-archive-my 0 $mp-gap-1; display: flex; align-items: center;
+}
+.archive-tip-label { flex-shrink: 0; font-size: $mp-font-meta; margin-right: $mp-gap-2; }
 .archive-tip-title {
   flex: 1;
   min-width: 0;
   color: var(--t-accent);
-  font-size: 24rpx;
-  line-height: 36rpx;
+  font-size: $mp-font-sub;
+  line-height: $mp-lh-archive;
   text-decoration: underline;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.bubble { max-width: 80%; padding: 24rpx 28rpx; margin: 8rpx 0; border-radius: 20rpx; word-break: break-all; box-sizing: border-box; }
-.bubble-content { white-space: pre-wrap; word-break: break-all; font-size: 28rpx; line-height: 42rpx; }
-.bubble-content--rich { white-space: normal; font-size: 28rpx; line-height: 42rpx; }
-.user { background: linear-gradient(135deg, var(--t-accent-from), var(--t-accent-to)); color: var(--t-accent-text); align-self: flex-end; margin-left: auto; max-width: 78%; border-radius: 20rpx 20rpx 6rpx 20rpx; box-shadow: 0 4rpx 20rpx var(--t-accent-shadow); }
-.ai { background: var(--t-surface); color: var(--t-text-1); align-self: stretch; max-width: none; width: calc(100% + 56rpx); margin-left: -28rpx; margin-right: -28rpx; border-radius: 0; border-bottom: 1rpx solid var(--t-divider); padding: 28rpx 32rpx; }
-.msg-meta { align-self: flex-end; margin-left: auto; padding: 4rpx 0 8rpx; font-size: 24rpx; color: var(--t-text-3); }
+.bubble {
+  max-width: $mp-scene-bubble-max; padding: $mp-gap-6 $mp-gap-7; margin: $mp-gap-2 0;
+  border-radius: $mp-radius-bubble; word-break: break-all; box-sizing: border-box;
+}
+.bubble-content {
+  white-space: pre-wrap; word-break: break-all;
+  font-size: $mp-font-body; line-height: $mp-lh-body;
+}
+.bubble-content--rich { white-space: normal; font-size: $mp-font-body; line-height: $mp-lh-body; }
+.user {
+  background: linear-gradient(135deg, var(--t-accent-from), var(--t-accent-to)); color: var(--t-accent-text);
+  align-self: flex-end; margin-left: auto; max-width: $mp-scene-user-max;
+  border-radius: $mp-radius-bubble $mp-radius-bubble $mp-radius-xs $mp-radius-bubble;
+  box-shadow: 0 $mp-scene-elev-y $mp-scene-blur-bubble var(--t-accent-shadow);
+}
+.ai {
+  background: var(--t-surface); color: var(--t-text-1); align-self: stretch; max-width: none;
+  width: calc(100% + #{$mp-scene-ai-pull-total}); margin-left: -$mp-scene-ai-pull; margin-right: -$mp-scene-ai-pull;
+  border-radius: 0; border-bottom: 1rpx solid var(--t-divider); padding: $mp-gap-7 $mp-gap-8;
+}
+.msg-meta {
+  align-self: flex-end; margin-left: auto;
+  padding: $mp-gap-1 0 $mp-gap-2; font-size: $mp-font-meta; color: var(--t-text-3);
+}
 .msg-meta-text { color: var(--t-text-3); }
 .retry-link { color: var(--t-accent); font-weight: 500; }
-.input-bar { flex-shrink: 0; padding: 16rpx 28rpx; padding-bottom: calc(16rpx + env(safe-area-inset-bottom)); background: var(--t-surface); box-shadow: 0 -2rpx 16rpx rgba(0,0,0,0.06); }
+.input-bar {
+  flex-shrink: 0; padding: $mp-gap-4 $mp-gap-7;
+  padding-bottom: calc(#{$mp-gap-4} + var(--custom-tabbar-height) + env(safe-area-inset-bottom));
+  background: var(--t-surface); box-shadow: var(--t-shadow-up);
+}
 .readonly-notice-slot { flex-shrink: 0; width: 100%; box-sizing: border-box; }
-.readonly-tip { padding: 16rpx 20rpx; border-radius: 14rpx; background: var(--t-error-bg); color: var(--t-error); font-size: 24rpx; border: 1rpx solid var(--t-error-border); }
-.input-shell { display: flex; align-items: flex-end; background: var(--t-elevated); border-radius: 40rpx; border: 2rpx solid var(--t-border); padding: 12rpx 12rpx 12rpx 28rpx; gap: 12rpx; }
-.input-text { flex: 1; min-height: 80rpx; max-height: 280rpx; padding: 10rpx 0; font-size: 30rpx; line-height: 44rpx; color: var(--t-text-1); width: 100%; }
-.send-fab { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 72rpx; height: 72rpx; margin: 0; padding: 0; border: none; border-radius: 50%; background: linear-gradient(135deg, var(--t-accent-from), var(--t-accent-to)); line-height: 1; box-shadow: 0 4rpx 16rpx var(--t-accent-shadow); }
-.send-fab-icon { color: var(--t-accent-text); font-size: 36rpx; line-height: 1; font-weight: 700; }
+.readonly-tip {
+  padding: $mp-gap-4 $mp-gap-5; border-radius: $mp-radius-md;
+  background: var(--t-error-bg); color: var(--t-error); font-size: $mp-font-meta;
+  border: 1rpx solid var(--t-error-border);
+}
+.input-shell {
+  display: flex; align-items: flex-end; background: var(--t-elevated); border-radius: $mp-radius-pill;
+  border: $mp-border solid var(--t-border);
+  padding: $mp-gap-3 $mp-gap-3 $mp-gap-3 $mp-gap-7;
+  gap: $mp-gap-3;
+}
+.input-text {
+  flex: 1; min-height: $mp-scene-input-min-h; max-height: $mp-scene-input-max-h;
+  padding: $mp-scene-input-pty 0; font-size: $mp-font-input; line-height: $mp-lh-input;
+  color: var(--t-text-1); width: 100%;
+}
+.send-fab {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  width: $mp-hit-fab; height: $mp-hit-fab; margin: 0; padding: 0; border: none; border-radius: 50%;
+  background: linear-gradient(135deg, var(--t-accent-from), var(--t-accent-to)); line-height: 1;
+  box-shadow: 0 $mp-scene-elev-y $mp-scene-blur-fab var(--t-accent-shadow);
+}
+.send-fab-icon { color: var(--t-accent-text); font-size: $mp-hit-fab-icon; line-height: 1; font-weight: 700; }
 .send-fab::after { border: none; }
 .send-fab--disabled { background: var(--t-text-4); box-shadow: none; }
 .send-fab--disabled .send-fab-icon { color: var(--t-text-3); }

@@ -15,3 +15,6 @@ kinit-uni.code-workspace
 
 /unpackage/*
 
+# Local private config
+config.local.js
+

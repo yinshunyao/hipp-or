@@ -1,17 +1,30 @@
 <template>
-  <view class="content">
-    <image v-if="logo" class="logo" :src="logoImage"></image>
-    <view class="text-area">
-      <text class="title">Hello {{ name }}</text>
+  <view class="page-with-nav">
+    <uni-nav-bar
+      title="Kinit 移动端框架"
+      fixed
+      status-bar
+      :border="false"
+      background-color="#FFFFFF"
+      color="#1F1F1F"
+      left-icon="left"
+      @clickLeft="navBack"
+    />
+    <view class="content page-with-nav__body">
+      <image v-if="logo" class="logo" :src="logoImage"></image>
+      <view class="text-area">
+        <text class="title">Hello {{ name }}</text>
+      </view>
     </view>
   </view>
 </template>
 
 <script>
 import { wxShareMixins } from '@/common/mixins/share.js'
+import navBackMixin from '@/common/mixins/nav-back.js'
 
 export default {
-  mixins: [wxShareMixins],
+  mixins: [wxShareMixins, navBackMixin],
   computed: {
     name() {
       return this.$store.state.auth.name
@@ -27,7 +40,13 @@ export default {
 </script>
 
 <style lang="scss">
+page {
+  height: 100%;
+  box-sizing: border-box;
+}
 .content {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;

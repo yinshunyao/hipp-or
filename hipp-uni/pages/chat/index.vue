@@ -1,5 +1,14 @@
 <template>
-  <view :class="themeClass" class="inbox">
+  <view :class="themeClass" class="page-with-nav">
+    <uni-nav-bar
+      :title="barTitle"
+      fixed
+      status-bar
+      :border="false"
+      :background-color="'var(--t-nav-bg)'"
+      :color="'var(--t-nav-text)'"
+    />
+    <view class="inbox page-with-nav__body">
     <van-search
       :value="keyword"
       input-align="center"
@@ -24,7 +33,7 @@
       >
         <view
           class="avatar"
-          :style="'background:' + ((row.agent && row.agent.icon_background) ? row.agent.icon_background : '')"
+          :style="{ background: avatarBackground(row) }"
         >
           <text v-if="avatarText(row)" class="avatar-text">{{ avatarText(row) }}</text>
           <image v-else-if="avatarUrl(row)" class="avatar-img" :src="avatarUrl(row)" mode="aspectFill" />
@@ -45,6 +54,26 @@
         </view>
       </view>
     </scroll-view>
+    <view
+      v-if="actionSheetVisible"
+      class="topic-action-mask"
+      @click="closeActionSheet"
+      @touchmove.stop.prevent
+    >
+      <view class="topic-action-sheet" @click.stop>
+        <view
+          v-for="(item, index) in actionSheetItems"
+          :key="item.key"
+          class="topic-action-item"
+          :class="{ 'topic-action-item--danger': item.danger }"
+          @click="onActionItemTap(index)"
+        >
+          {{ item.label }}
+        </view>
+        <view class="topic-action-cancel" @click="closeActionSheet">取消</view>
+      </view>
+    </view>
+    </view>
   </view>
 </template>
 
@@ -55,9 +84,19 @@ import { themeMixin } from '@/common/mixins/theme.js'
 export default {
   mixins: [themeMixin],
   data() {
-    return { keyword: '', items: [], loading: false }
+    return {
+      keyword: '',
+      items: [],
+      loading: false,
+      actionSheetVisible: false,
+      actionSheetItems: [],
+      actionSheetRow: null
+    }
   },
   computed: {
+    barTitle() {
+      return this.isHumanStaff ? '客服接待' : '对话'
+    },
     isHumanStaff() {
       return this.$auth && this.$auth.hasRole('人工客服')
     },
@@ -69,9 +108,6 @@ export default {
     }
   },
   onShow() {
-    try {
-      uni.setNavigationBarTitle({ title: this.isHumanStaff ? '客服接待' : '对话' })
-    } catch (e) {}
     this.loadInbox()
   },
   onPullDownRefresh() {
@@ -117,6 +153,36 @@ export default {
       const ag = row.agent || {}
       return (ag.icon_type === 'image' && ag.icon_url) ? ag.icon_url : ''
     },
+    avatarBackground(row) {
+      const ag = row.agent || {}
+      const raw = String(ag.icon_background || '').trim()
+      if (!raw) return 'linear-gradient(145deg, var(--t-ring-from), var(--t-ring-to))'
+      const rgb = this.parseColorToRgb(raw)
+      if (!rgb) return raw
+      return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.22)`
+    },
+    parseColorToRgb(color) {
+      if (!color) return null
+      const hex = color.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
+      if (hex) {
+        const v = hex[1]
+        const full = v.length === 3 ? v.split('').map((c) => `${c}${c}`).join('') : v
+        return {
+          r: parseInt(full.slice(0, 2), 16),
+          g: parseInt(full.slice(2, 4), 16),
+          b: parseInt(full.slice(4, 6), 16)
+        }
+      }
+      const rgb = color.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*[\d.]+\s*)?\)$/i)
+      if (rgb) {
+        return {
+          r: Math.max(0, Math.min(255, Math.round(Number(rgb[1])))),
+          g: Math.max(0, Math.min(255, Math.round(Number(rgb[2])))),
+          b: Math.max(0, Math.min(255, Math.round(Number(rgb[3]))))
+        }
+      }
+      return null
+    },
     async onRowTap(row) {
       const sid = row && row.session && row.session.id
       if (!sid) {
@@ -137,26 +203,73 @@ export default {
     },
     onRowLong(row) {
       if (!row.session) return
-      const sid = row.session.id
       const closed = !!row.session.is_topic_closed
       const pinLabel = row.session.is_pinned ? '取消置顶' : '置顶'
-      const itemList = closed ? ['继续对话', pinLabel, '修改标题', '删除会话'] : [pinLabel, '修改标题', '删除会话']
-      uni.showActionSheet({
-        itemList,
-        success: async (res) => {
-          let tap = res.tapIndex
-          if (closed) {
-            if (tap === 0) {
-              try { await patchChatSession(sid, { resume_topic: true }); await this.loadInbox(); uni.navigateTo({ url: `/subpkg/chat/chat?sessionId=${sid}` }); try { uni.setStorageSync('last_active_session_id', String(sid)) } catch (e) {} } catch (e) {}
-              return
+      const actions = closed
+        ? [
+            { key: 'resume', label: '继续对话' },
+            { key: 'pin', label: pinLabel },
+            { key: 'rename', label: '修改标题' },
+            { key: 'delete', label: '删除会话', danger: true }
+          ]
+        : [
+            { key: 'pin', label: pinLabel },
+            { key: 'rename', label: '修改标题' },
+            { key: 'delete', label: '删除会话', danger: true }
+          ]
+      this.actionSheetRow = row
+      this.actionSheetItems = actions
+      this.actionSheetVisible = true
+    },
+    closeActionSheet() {
+      this.actionSheetVisible = false
+      this.actionSheetItems = []
+      this.actionSheetRow = null
+    },
+    async onActionItemTap(index) {
+      const row = this.actionSheetRow
+      const action = this.actionSheetItems[index]
+      this.closeActionSheet()
+      if (!row || !row.session || !action) return
+      const sid = row.session.id
+      if (!sid) return
+      if (action.key === 'resume') {
+        try {
+          await patchChatSession(sid, { resume_topic: true })
+          await this.loadInbox()
+          uni.navigateTo({ url: `/subpkg/chat/chat?sessionId=${sid}` })
+          try { uni.setStorageSync('last_active_session_id', String(sid)) } catch (e) {}
+        } catch (e) {}
+        return
+      }
+      if (action.key === 'pin') {
+        try { await patchChatSession(sid, { is_pinned: !row.session.is_pinned }); this.loadInbox() } catch (e) {}
+        return
+      }
+      if (action.key === 'rename') {
+        uni.showModal({
+          title: '修改标题',
+          editable: true,
+          placeholderText: row.session.display_title || row.session.title || '',
+          success: async (r) => {
+            if (r.confirm && r.content) {
+              try { await patchChatSession(sid, { title: r.content }); this.loadInbox() } catch (e) {}
             }
-            tap -= 1
           }
-          if (tap === 0) { try { await patchChatSession(sid, { is_pinned: !row.session.is_pinned }); this.loadInbox() } catch (e) {} }
-          else if (tap === 1) { uni.showModal({ title: '修改标题', editable: true, placeholderText: row.session.display_title || row.session.title || '', success: async (r) => { if (r.confirm && r.content) { try { await patchChatSession(sid, { title: r.content }); this.loadInbox() } catch (e) {} } } }) }
-          else if (tap === 2) { uni.showModal({ title: '确认删除', content: '删除后不可恢复', success: async (r) => { if (r.confirm) { try { await deleteChatSession(sid); this.loadInbox() } catch (e) {} } } }) }
-        }
-      })
+        })
+        return
+      }
+      if (action.key === 'delete') {
+        uni.showModal({
+          title: '确认删除',
+          content: '删除后不可恢复',
+          success: async (r) => {
+            if (r.confirm) {
+              try { await deleteChatSession(sid); this.loadInbox() } catch (e) {}
+            }
+          }
+        })
+      }
     }
   }
 }
@@ -170,38 +283,131 @@ page {
 </style>
 
 <style lang="scss" scoped>
-.inbox { display: flex; flex-direction: column; min-height: 100%; background: var(--t-root); }
-.list-wrap { flex: 1; min-height: 0; }
-.hint { display: flex; flex-direction: column; align-items: center; padding: 100rpx 40rpx; }
-.hint-dot { width: 12rpx; height: 12rpx; border-radius: 50%; background: var(--t-accent); margin-bottom: 20rpx; opacity: 0.6; }
-.hint-text { color: var(--t-text-3); font-size: 28rpx; }
+@import '@/uni.scss';
+
+.inbox { display: flex; flex-direction: column; min-height: 0; flex: 1; background: var(--t-root); }
+.list-wrap { flex: 1; min-height: 0; padding-bottom: calc(var(--custom-tabbar-height) + env(safe-area-inset-bottom)); box-sizing: border-box; }
+.hint {
+  display: flex; flex-direction: column; align-items: center;
+  padding: $mp-topic-empty-y $mp-gap-9;
+}
+.hint-dot {
+  width: $mp-topic-dot; height: $mp-topic-dot; border-radius: 50%;
+  background: var(--t-accent); margin-bottom: $mp-gap-5; opacity: 0.6;
+}
+.hint-text { color: var(--t-text-3); font-size: $mp-font-body; }
 .row {
-  display: flex; align-items: center; padding: 28rpx 30rpx;
+  display: flex; align-items: center; padding: $mp-gap-7 $mp-topic-row-x;
   background: var(--t-surface); border-bottom: 1rpx solid var(--t-divider);
   transition: background-color 0.15s ease;
   &:active { background-color: var(--t-elevated); }
 }
 .avatar {
-  width: 104rpx; height: 104rpx; border-radius: 28rpx; margin-right: 24rpx;
+  width: $mp-topic-avatar; height: $mp-topic-avatar; border-radius: $mp-radius-avatar;
+  margin-right: $mp-gap-6;
   display: flex; align-items: center; justify-content: center;
   overflow: hidden; flex-shrink: 0;
   background: linear-gradient(145deg, var(--t-ring-from), var(--t-ring-to));
+  border: 1rpx solid var(--t-ring-border);
   box-shadow: var(--t-shadow);
 }
-.avatar-text { font-size: 40rpx; color: var(--t-text-1); }
-.avatar-img { width: 104rpx; height: 104rpx; }
+.avatar-text { font-size: $mp-topic-avatar-font; color: var(--t-text-1); }
+.avatar-img { width: $mp-topic-avatar; height: $mp-topic-avatar; }
 .meta { flex: 1; min-width: 0; }
 .title-line { display: flex; align-items: flex-start; }
-.name-wrap { flex: 1; min-width: 0; padding-right: 8rpx; }
+.name-wrap { flex: 1; min-width: 0; padding-right: $mp-gap-2; }
 .name {
-  font-size: 32rpx; color: var(--t-text-1); font-weight: 600;
+  font-size: $mp-font-title; color: var(--t-text-1); font-weight: 600;
   overflow: hidden; text-overflow: ellipsis;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; word-break: break-word;
 }
-.title-tags { flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8rpx; padding-top: 2rpx; }
-.pin { font-size: 20rpx; color: var(--t-pin-color); background: var(--t-pin-bg); border-radius: 8rpx; padding: 4rpx 12rpx; font-weight: 500; }
-.state { font-size: 20rpx; color: var(--t-state-color); background: var(--t-state-bg); border-radius: 8rpx; padding: 4rpx 12rpx; font-weight: 500; }
-.topic-end { font-size: 20rpx; color: var(--t-end-color); background: var(--t-end-bg); border-radius: 8rpx; padding: 4rpx 12rpx; font-weight: 500; }
-.human-tag { font-size: 20rpx; color: var(--t-accent); background: var(--t-accent-bg); border-radius: 8rpx; padding: 4rpx 12rpx; font-weight: 500; }
-.preview { font-size: 26rpx; color: var(--t-text-3); margin-top: 8rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.title-tags {
+  flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end;
+  gap: $mp-gap-2; padding-top: $mp-gap-micro;
+}
+.pin {
+  font-size: $mp-font-caption; color: var(--t-pin-color); background: var(--t-pin-bg);
+  border-radius: $mp-radius-sm; padding: $mp-gap-1 $mp-gap-3; font-weight: 500;
+}
+.state {
+  font-size: $mp-font-caption; color: var(--t-state-color); background: var(--t-state-bg);
+  border-radius: $mp-radius-sm; padding: $mp-gap-1 $mp-gap-3; font-weight: 500;
+}
+.topic-end {
+  font-size: $mp-font-caption; color: var(--t-end-color); background: var(--t-end-bg);
+  border-radius: $mp-radius-sm; padding: $mp-gap-1 $mp-gap-3; font-weight: 500;
+}
+.human-tag {
+  font-size: $mp-font-caption; color: var(--t-accent); background: var(--t-accent-bg);
+  border-radius: $mp-radius-sm; padding: $mp-gap-1 $mp-gap-3; font-weight: 500;
+}
+.preview {
+  font-size: $mp-font-sub; color: var(--t-text-3); margin-top: $mp-gap-2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+::v-deep .van-search {
+  background: var(--t-surface) !important;
+  padding: $mp-gap-4 $mp-gap-5 !important;
+}
+
+::v-deep .van-search__content {
+  background: var(--t-elevated) !important;
+  border: 1rpx solid var(--t-border) !important;
+  border-radius: $mp-radius-pill !important;
+}
+
+::v-deep .van-field__control {
+  color: var(--t-text-1) !important;
+}
+
+::v-deep .van-field__control::placeholder {
+  color: var(--t-text-3) !important;
+}
+
+.topic-action-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: rgba(0, 0, 0, 0.42);
+  display: flex;
+  align-items: flex-end;
+}
+
+.topic-action-sheet {
+  width: 100%;
+  padding: 0 24rpx calc(24rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.topic-action-item,
+.topic-action-cancel {
+  background: var(--t-surface);
+  color: var(--t-text-1);
+  font-size: $mp-font-title;
+  line-height: 100rpx;
+  text-align: center;
+  border-bottom: 1rpx solid var(--t-divider);
+}
+
+.topic-action-item:first-child {
+  border-top-left-radius: 24rpx;
+  border-top-right-radius: 24rpx;
+}
+
+.topic-action-item:last-child {
+  border-bottom: none;
+  border-bottom-left-radius: 24rpx;
+  border-bottom-right-radius: 24rpx;
+}
+
+.topic-action-item--danger {
+  color: var(--t-error);
+}
+
+.topic-action-cancel {
+  margin-top: 16rpx;
+  border-radius: 24rpx;
+  border-bottom: none;
+}
 </style>

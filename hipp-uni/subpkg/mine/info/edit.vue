@@ -1,7 +1,25 @@
 <template>
-  <view :class="themeClass" class="container">
+  <view class="page-with-nav">
+    <uni-nav-bar
+      title="编辑资料"
+      fixed
+      status-bar
+      :border="false"
+      background-color="#FFFFFF"
+      color="#1F1F1F"
+      left-icon="left"
+      @clickLeft="navBack"
+    />
+    <view :class="themeClass" class="container page-with-nav__body">
     <view class="form-wrap">
       <u--form ref="formRef" label-position="left" label-width="100px" :model="form" :rules="rules">
+        <u-form-item label="头像" border-bottom :required="false" @click="handleToAvatar">
+          <view class="avatar-edit-row">
+            <image v-if="avatarUrl" :src="avatarUrl" class="avatar-preview" mode="aspectFill" />
+            <text v-else class="avatar-placeholder">👤</text>
+            <text class="avatar-action">上传并更新</text>
+          </view>
+        </u-form-item>
         <u-form-item label="用户姓名" prop="name" border-bottom :required="true">
           <u--input v-model="form.name" placeholder="请输入用户姓名" border="none" :custom-style="inputStyle"></u--input>
         </u-form-item>
@@ -23,6 +41,7 @@
         </button>
       </view>
     </view>
+    </view>
   </view>
 </template>
 
@@ -30,9 +49,10 @@
 import { getInfo } from '@/common/request/api/login'
 import { updateCurrentUser } from '@/common/request/api/vadmin/auth/user.js'
 import { themeMixin } from '@/common/mixins/theme.js'
+import navBackMixin from '@/common/mixins/nav-back.js'
 
 export default {
-  mixins: [themeMixin],
+  mixins: [themeMixin, navBackMixin],
   data() {
     return {
       btnLoading: false,
@@ -48,7 +68,11 @@ export default {
     }
   },
   computed: {
-    inputStyle() { return { color: this.tc.text1 } }
+    inputStyle() { return { color: this.tc.text1 } },
+    avatarUrl() {
+      const avatar = this.$store.state.auth.avatar
+      return avatar && String(avatar).trim() ? avatar : ''
+    }
   },
   onLoad() {
     this.$store.dispatch('dict/getDicts', ['sys_vadmin_gender']).then((result) => { this.genderOptions = result.sys_vadmin_gender })
@@ -56,6 +80,7 @@ export default {
   },
   onReady() { this.$refs.formRef.setRules(this.rules) },
   methods: {
+    handleToAvatar() { this.$tab.navigateTo('/subpkg/mine/avatar/index') },
     getUser() {
       this.$modal.loading('加载中')
       getInfo().then((res) => { this.form = res.data }).finally(() => { this.$modal.closeLoading() })
@@ -84,4 +109,32 @@ page { background-color: var(--t-root, #F5F3EE); }
 .submit-btn::after { border: none; }
 .submit-btn--hover { opacity: 0.88; }
 .submit-text { font-size: 32rpx; font-weight: 600; color: var(--t-accent-text); }
+.avatar-edit-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12rpx;
+}
+.avatar-preview {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  border: 2rpx solid var(--t-border);
+}
+.avatar-placeholder {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: var(--t-elevated);
+  color: var(--t-text-2);
+  font-size: 36rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.avatar-action {
+  color: var(--t-accent);
+  font-size: 28rpx;
+}
 </style>

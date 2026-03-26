@@ -1,5 +1,16 @@
 <template>
-  <view :class="themeClass" class="about-container">
+  <view :class="themeClass" class="page-with-nav">
+    <uni-nav-bar
+      title="关于我们"
+      fixed
+      status-bar
+      :border="false"
+      :background-color="'var(--t-nav-bg)'"
+      :color="'var(--t-nav-text)'"
+      left-icon="left"
+      @clickLeft="navBack"
+    />
+    <view class="about-container page-with-nav__body">
     <view class="header-section">
       <view class="logo-ring"><image class="about-logo" :src="logoImage" mode="aspectFill" /></view>
       <text class="about-title">{{ title }}</text>
@@ -13,13 +24,15 @@
       </view>
     </view>
     <view class="copyright"><view>{{ footerContent }}</view></view>
+    </view>
   </view>
 </template>
 
 <script>
 import { themeMixin } from '@/common/mixins/theme.js'
+import navBackMixin from '@/common/mixins/nav-back.js'
 export default {
-  mixins: [themeMixin],
+  mixins: [themeMixin, navBackMixin],
   computed: {
     version() { return this.$store.state.app.version },
     title() { return this.$store.state.app.title },

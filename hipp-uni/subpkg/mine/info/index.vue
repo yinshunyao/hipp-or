@@ -1,5 +1,16 @@
 <template>
-  <view class="container">
+  <view class="page-with-nav">
+    <uni-nav-bar
+      title="个人信息"
+      fixed
+      status-bar
+      :border="false"
+      background-color="#FFFFFF"
+      color="#1F1F1F"
+      left-icon="left"
+      @clickLeft="navBack"
+    />
+    <view class="container page-with-nav__body">
     <u-cell-group>
       <u-cell title="姓名" :value="name">
         <u-icon slot="icon" class="iconfont icon-user"></u-icon>
@@ -17,11 +28,15 @@
         <u-icon slot="icon" class="iconfont icon-jiaofuriqi"></u-icon>
       </u-cell>
     </u-cell-group>
+    </view>
   </view>
 </template>
 
 <script>
+import navBackMixin from '@/common/mixins/nav-back.js'
+
 export default {
+  mixins: [navBackMixin],
   computed: {
     name() {
       return this.$store.state.auth.name

@@ -1,23 +1,23 @@
 const STORAGE_KEY = 'app_theme_mode'
 
 const lightColors = {
-  text1: '#1C1917',
+  text1: '#1F1F1F',
   text2: '#78716C',
   text3: '#A8A29E',
   aiText: '#44403C',
-  accent: '#C47F0A',
+  accent: '#B46B00',
   codeBg: 'rgba(0,0,0,0.05)',
-  codeColor: '#C47F0A',
-  strongColor: '#1C1917',
-  linkColor: '#C47F0A',
-  quoteBorder: '#C47F0A',
-  quoteBg: 'rgba(196,127,10,0.06)',
+  codeColor: '#B46B00',
+  strongColor: '#1F1F1F',
+  linkColor: '#B46B00',
+  quoteBorder: '#B46B00',
+  quoteBg: 'rgba(180,107,0,0.06)',
   quoteText: '#78716C',
   preBg: '#F0EDE6',
   preBorder: '#E7E5E4',
   preText: '#44403C',
   thBg: 'rgba(0,0,0,0.03)',
-  thText: '#1C1917',
+  thText: '#1F1F1F',
   tdText: '#44403C',
   tableBorder: '#E7E5E4'
 }

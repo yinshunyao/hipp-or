@@ -2,38 +2,37 @@
 @import 'uview-ui/theme.scss';
 
 /**
- * "Luminous" Design System — Static SCSS tokens
- * Default: Light (Luminous Paper)
- * CSS variables handle runtime theme switching
+ * "Luminous Pro" — Modern Business Design System
+ * 主色：深海蓝灰（商务、克制）| 辅助：深青绿 | 中性：偏冷灰，避免暖黄显廉价感
  */
 
-/* ── 行为相关颜色（静态 fallback） ── */
-$uni-color-primary: #C47F0A;
-$uni-color-success: #0E9F94;
-$uni-color-warning: #D4890F;
-$uni-color-error: #DC4444;
+/* ── 行为相关颜色 ── */
+$uni-color-primary: #1E3A5F;        // 深海蓝（主按钮、链接、强调）
+$uni-color-success: #0D8C83;        // 深青绿（成功态）
+$uni-color-warning: #C27A12;        // 琥珀警示（与主色区分）
+$uni-color-error: #DC4444;          // 保留
 
-/* ── 品牌色扩展 ── */
-$color-primary-light: #E89E10;
-$color-primary-bg: rgba(196, 127, 10, 0.07);
-$color-accent: #0E9F94;
-$color-accent-bg: rgba(14, 159, 148, 0.07);
+/* ── 品牌色扩展（用户气泡/发送钮渐变：from → to）── */
+$color-primary-light: #2E5A8A;      // 主色浅端（渐变起点，略亮）
+$color-primary-bg: rgba(30, 58, 95, 0.06);
+$color-accent: #0D8C83;
+$color-accent-bg: rgba(13, 140, 131, 0.06);
 
-/* ── 文字基本颜色 ── */
-$uni-text-color: #1C1917;
+/* ── 文字基本颜色 (已优化 - 使用HSL和谐中性色) ── */
+$uni-text-color: #1F1F1F;           // 略深主文 (保持不变，确保可读性)
 $uni-text-color-inverse: #FFFFFF;
-$uni-text-color-grey: #78716C;
-$uni-text-color-placeholder: #A8A29E;
-$uni-text-color-disable: #D6D3D1;
+$uni-text-color-grey: hsl(220, 8%, 44%); // 次级文字（冷灰）
+$uni-text-color-placeholder: hsl(220, 6%, 58%);
+$uni-text-color-disable: hsl(220, 5%, 74%);
 
-/* ── 背景颜色 ── */
-$uni-bg-color: #FFFFFF;
-$uni-bg-color-grey: #F5F3EE;
-$uni-bg-color-hover: #EBE8E1;
-$uni-bg-color-mask: rgba(0, 0, 0, 0.4);
+/* ── 背景颜色（冷灰体系，输入条/浮层不显黄）── */
+$uni-bg-color: #FFFFFF;             // 页面主体背景
+$uni-bg-color-grey: hsl(220, 10%, 96%);
+$uni-bg-color-hover: hsl(220, 8%, 92%);
+$uni-bg-color-mask: rgba(0, 0, 0, 0.4); // 遮罩层
 
-/* ── 边框颜色 ── */
-$uni-border-color: #E7E5E4;
+/* ── 边框颜色 (已优化 - 使用HSL和谐中性色) ── */
+$uni-border-color: hsl(220, 6%, 86%);
 
 /* ── 文字尺寸 ── */
 $uni-font-size-sm: 12px;
@@ -51,23 +50,227 @@ $uni-border-radius-base: 12px;
 $uni-border-radius-lg: 16px;
 $uni-border-radius-circle: 50%;
 
-/* ── 水平间距 ── */
+/* ── 间距 ── */
 $uni-spacing-row-sm: 5px;
 $uni-spacing-row-base: 10px;
 $uni-spacing-row-lg: 15px;
-
-/* ── 垂直间距 ── */
 $uni-spacing-col-sm: 4px;
 $uni-spacing-col-base: 8px;
 $uni-spacing-col-lg: 12px;
 
 /* ── 透明度 ── */
-$uni-opacity-disabled: 0.3;
+$uni-opacity-disabled: 0.4;         // 稍提高，更明显
 
-/* ── 文章场景相关 ── */
-$uni-color-title: #1C1917;
+/* ── 文章场景 ── */
+$uni-color-title: $uni-text-color;
 $uni-font-size-title: 20px;
-$uni-color-subtitle: #44403C;
+$uni-color-subtitle: #333333;
 $uni-font-size-subtitle: 26px;
-$uni-color-paragraph: #78716C;
+$uni-color-paragraph: $uni-text-color-grey;
 $uni-font-size-paragraph: 15px;
+
+/* ── 语义层：小程序主题（theme-css-vars.scss → --t-*）── */
+/* 改主色：先动 $uni-color-primary / $color-primary-light */
+
+/* 浅色：页面与层次（冷灰底，与深蓝主色统一） */
+$t-page-root: hsl(220, 14%, 97%);
+$t-surface-elevated: hsl(220, 10%, 94%); // 输入框外壳等
+$t-surface-hover: hsl(220, 10%, 91%);
+$t-text-secondary: hsl(220, 8%, 42%);
+$t-text-tertiary: hsl(220, 6%, 58%);
+$t-text-quaternary: hsl(220, 5%, 74%);
+$t-border-subtle: hsl(220, 6%, 86%);
+$t-paper-warm: hsl(220, 10%, 95%);  // 纸张/分割（沿用变量名，实为冷灰）
+$t-divider-line: $t-paper-warm;
+$t-ring-from: $t-paper-warm;
+$t-ring-to: #FFFFFF;
+$t-accent-shadow-light: rgba(30, 58, 95, 0.16);
+$t-accent-focus-border: rgba(30, 58, 95, 0.32);
+$t-pin-bg-light: rgba(30, 58, 95, 0.08);
+$t-login-glow-light: rgba(13, 140, 131, 0.03);
+$t-ring-border-light: rgba(30, 58, 95, 0.12);
+$t-ring-shadow-glow-light: rgba(30, 58, 95, 0.04);
+$t-logo-inset-light: rgba(0, 0, 0, 0.02); // Logo内嵌阴影
+$t-nav-bg-light: #FFFFFF;
+$t-nav-text-light: #1F1F1F;
+$t-shadow-light: 0 2rpx 16rpx rgba(0, 0, 0, 0.06);
+$t-shadow-up-light: 0 -2rpx 16rpx rgba(0, 0, 0, 0.06);
+$t-shadow-heavy-light: 0 4rpx 24rpx rgba(0, 0, 0, 0.08);
+$t-shadow-drop-light: 0 8rpx 40rpx rgba(0, 0, 0, 0.12);
+$t-end-bg-light: rgba(0, 0, 0, 0.04); // 结束状态背景
+$t-error-bg-light: rgba(220, 68, 68, 0.06); // 错误背景
+$t-error-border-light: rgba(220, 68, 68, 0.12); // 错误边框
+
+/* 暗色：与浅色的对比关系保持不变，强调色略提亮以保证可读性 */
+$t-page-root-dark: #131218;
+$t-surface-dark: #1C1B22;
+$t-elevated-dark: #252430;
+$t-hover-dark: #2A2938;
+$t-accent-dark: #FFB020;
+$t-accent-from-dark: #FFB020;
+$t-accent-to-dark: #E89E10;
+$t-accent-bg-dark: rgba(255, 176, 32, 0.1);
+$t-accent-text-dark: #131218;
+$t-accent-shadow-dark: rgba(255, 176, 32, 0.25);
+$t-success-dark: #4ECDC4;
+$t-error-dark: #FF6B6B;
+$t-error-bg-dark: rgba(255, 107, 107, 0.08);
+$t-error-border-dark: rgba(255, 107, 107, 0.18);
+$t-text-1-dark: #F0ECE2;
+$t-text-2-dark: #9B97A8;
+$t-text-3-dark: #6B6779;
+$t-text-4-dark: #4A475A;
+$t-border-dark: rgba(255, 255, 255, 0.06);
+$t-border-focus-dark: rgba(255, 176, 32, 0.35);
+$t-divider-dark: rgba(255, 255, 255, 0.04);
+$_t-ambient-dark: 0.3;
+$t-shadow-dark: 0 4rpx 24rpx rgba(0, 0, 0, $_t-ambient-dark);
+$t-shadow-heavy-dark: 0 4rpx 32rpx rgba(0, 0, 0, 0.4);
+$t-shadow-up-dark: 0 -2rpx 24rpx rgba(0, 0, 0, 0.35);
+$t-shadow-drop-dark: 0 8rpx 40rpx rgba(0, 0, 0, 0.45);
+$t-pin-color-dark: #FFB020;
+$t-pin-bg-dark: rgba(255, 176, 32, 0.12);
+$t-state-color-dark: #FF6B6B;
+$t-state-bg-dark: rgba(255, 107, 107, 0.12);
+$t-end-color-dark: #6B6779;
+$t-end-bg-dark: rgba(255, 255, 255, 0.06);
+$t-login-ambient-dark: rgba(255, 176, 32, 0.08);
+$t-login-glow-dark: rgba(78, 205, 196, 0.04);
+$t-ring-from-dark: #252430;
+$t-ring-to-dark: #1C1B22;
+$t-ring-border-dark: rgba(255, 176, 32, 0.12);
+$t-ring-shadow-glow-dark: rgba(255, 176, 32, 0.06);
+$t-logo-inset-dark: rgba(255, 255, 255, 0.06);
+$t-nav-bg-dark: #1C1B22;
+$t-nav-text-dark: #F0ECE2;
+
+/* ═════════ 小程序页面（rpx）：基准阶梯 + 按业务聚合 ═════════ */
+/* pages 样式中 @import '@/uni.scss'；调密度优先改 $mp-gap-* / $mp-font-* */
+
+/* --- 间距 / 圆角 / 字阶（全站共用）--- */
+$mp-gap-1: 4rpx;
+$mp-gap-2: 8rpx;
+$mp-gap-3: 12rpx;
+$mp-gap-4: 16rpx;
+$mp-gap-5: 20rpx;
+$mp-gap-6: 24rpx;
+$mp-gap-7: 28rpx;
+$mp-gap-8: 32rpx;
+$mp-gap-9: 40rpx;
+
+$mp-radius-xs: 6rpx;
+$mp-radius-sm: 8rpx;
+$mp-radius-md: 14rpx;
+$mp-radius-lg: 16rpx;
+$mp-radius-bubble: 20rpx;
+$mp-radius-avatar: 28rpx;
+$mp-radius-pill: 40rpx;
+
+$mp-font-caption: 20rpx;
+$mp-font-meta: 24rpx;
+$mp-font-sub: 26rpx;
+$mp-font-body: 28rpx;
+$mp-font-input: 30rpx;
+$mp-font-title: 32rpx;
+$mp-font-cta: 34rpx;
+$mp-font-brand: 44rpx;
+$mp-font-legal: 22rpx;
+
+$mp-lh-body: 42rpx;
+$mp-lh-archive: 36rpx;
+$mp-lh-input: 44rpx;
+$mp-lh-legal: 34rpx;
+$mp-lh-context: 38rpx;
+
+$mp-border: 2rpx;
+$mp-hit-fab: 72rpx;
+$mp-hit-fab-icon: 36rpx;
+$mp-gap-micro: 2rpx;
+/* 与 Vant tabbar --tabbar-height 对齐（约 56px → 112rpx@375 宽） */
+$mp-tabbar-height: 112rpx;
+
+/* 自定义导航栏标题：与列表主标题 $mp-font-title 一致（需 navigationStyle:custom + uni-nav-bar） */
+$mp-nav-title-font: $mp-font-title;
+/* 底部 Tab：与 32rpx 主标题视觉对齐（wxss 中需写死 px 时请与此同步） */
+$mp-tabbar-label-px: 16px;
+$mp-tabbar-icon-px: 28px;
+
+/* 登录页：光晕 / 聚焦（与 theme --t-* 配合） */
+$mp-auth-logo-halo: 60rpx;
+$mp-auth-field-focus-blur: 24rpx;
+$mp-font-emoji: 48rpx;
+
+/* --- 业务：场景对话（商业 / 需求；可与 subpkg 聊天对齐）--- */
+$mp-scene-archive-py: 14rpx;
+$mp-scene-archive-my: 10rpx;
+$mp-scene-archive-px: $mp-gap-5;
+$mp-scene-input-min-h: 80rpx;
+$mp-scene-input-max-h: 280rpx;
+$mp-scene-input-pty: 10rpx;
+$mp-scene-elev-y: 4rpx;
+$mp-scene-blur-bubble: 20rpx;
+$mp-scene-blur-fab: 16rpx;
+$mp-scene-bubble-max: 80%;
+$mp-scene-user-max: 78%;
+$mp-scene-ai-pull: $mp-gap-7;
+$mp-scene-ai-pull-total: $mp-gap-7 * 2;
+/* 子包全屏对话页：scroll 内列表末行与下方提示区之间的留白（话题条已入文档流，无需再大留白） */
+$mp-scene-detail-list-pad-bottom: 24rpx;
+/* 子包：会话内提示条（与归档条略不同宽/内边距） */
+$mp-scene-context-max: 92%;
+$mp-scene-context-py: 18rpx;
+$mp-scene-context-px: 22rpx;
+$mp-scene-context-my: 12rpx;
+/* 子包：人工接待悬浮按钮 */
+$mp-scene-human-fab-bottom: 200rpx;
+$mp-scene-human-fab-x: $mp-gap-7;
+$mp-scene-human-fab-pad-y: $mp-gap-5;
+$mp-scene-human-fab-pad-x: $mp-gap-7;
+$mp-scene-human-fab-shadow-y: 8rpx;
+$mp-scene-human-fab-shadow-blur: 28rpx;
+
+/* --- 业务：话题列表 --- */
+$mp-topic-empty-y: 100rpx;
+$mp-topic-row-x: 30rpx;
+$mp-topic-avatar: 104rpx;
+$mp-topic-avatar-font: 40rpx;
+$mp-topic-avatar-bg-alpha: 0.22;
+$mp-topic-dot: 12rpx;
+
+/* --- 业务：我的（个人中心）--- */
+$mp-account-header-pt: 60rpx;
+$mp-account-header-pb: 48rpx;
+$mp-account-avatar: 120rpx;
+$mp-account-greet-track: 2rpx;
+$mp-account-tab-extra: $mp-gap-9;
+/* 个人中心 / 设置页等：列表行左侧 iconfont（与 $mp-font-body 对齐，可调密度） */
+$mp-account-menu-icon: 40rpx;
+$mp-account-menu-icon-col: 52rpx;
+
+/* --- 业务：登录 --- */
+$mp-auth-logo: 140rpx;
+$mp-auth-logo-r: 36rpx;
+$mp-auth-logo-img: 100rpx;
+$mp-auth-brand-mt: $mp-gap-7;
+$mp-auth-brand-track: 4rpx;
+$mp-auth-sub-mt: 10rpx;
+$mp-auth-sub-track: 2rpx;
+$mp-auth-form-mt: 10%;
+$mp-auth-form-mx: 44rpx;
+$mp-auth-row-h: 104rpx;
+$mp-auth-row-r: 52rpx;
+$mp-auth-row-mb: $mp-gap-6;
+$mp-auth-row-px: $mp-gap-8;
+$mp-auth-icon-mr: $mp-gap-4;
+$mp-auth-btn-mt: $mp-gap-9;
+$mp-auth-btn-shadow-y: 8rpx;
+$mp-auth-btn-shadow-blur: 32rpx;
+$mp-auth-btn-track: 8rpx;
+$mp-auth-agree-mt: 36rpx;
+
+/*
+ * 无法使用 SCSS 的配置须与上文一致：
+ * - custom-tab-bar/theme.js、pages.json tabBar / globalStyle
+ * - globalStyle.backgroundColor 与 $t-page-root；navigationBarBackgroundColor 与 $uni-bg-color
+ * - 自定义 tabBar 的 --tabbar-item-* 与 $mp-tabbar-label-px / $mp-tabbar-icon-px
+ */

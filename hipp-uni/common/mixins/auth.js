@@ -15,7 +15,7 @@ export const wxLoginMixins = {
     return {}
   },
   methods: {
-    onGetPhoneNumber(e) {
+    onGetPhoneNumber(e, profile = {}) {
       return new Promise((resolve, reject) => {
         // 获取手机号官方文档：https://developers.weixin.qq.com/miniprogram/dev/framework/open-ability/getPhoneNumber.html
         if (e.detail.errMsg === 'getPhoneNumber:fail user deny') {
@@ -28,7 +28,11 @@ export const wxLoginMixins = {
           reject('微信公众平台未认证或未使用企业认证')
         } else if (e.detail.errMsg === 'getPhoneNumber:ok') {
           // code换取用户手机号。 每个code只能使用一次，code的有效期为5min
-          this.$store.dispatch('auth/wxLogin', e.detail.code).then((res) => {
+          this.$store.dispatch('auth/wxLogin', {
+            code: e.detail.code,
+            nickname: profile.nickname || '',
+            avatar: profile.avatar || ''
+          }).then((res) => {
             this.setOpenid()
             this.$store.dispatch('auth/GetInfo').then((result) => {
               resolve(result)

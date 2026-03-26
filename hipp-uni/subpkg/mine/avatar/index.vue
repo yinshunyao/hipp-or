@@ -1,5 +1,16 @@
 <template>
-  <view class="container">
+  <view class="page-with-nav">
+    <uni-nav-bar
+      title="修改头像"
+      fixed
+      status-bar
+      :border="false"
+      background-color="#FFFFFF"
+      color="#1F1F1F"
+      left-icon="left"
+      @clickLeft="navBack"
+    />
+    <view class="container page-with-nav__body">
     <view class="page-body uni-content-info">
       <view class="cropper-content">
         <view
@@ -114,10 +125,12 @@
       ></canvas>
     </view>
   </view>
+  </view>
 </template>
 
 <script>
 import config from '@/config'
+import navBackMixin from '@/common/mixins/nav-back.js'
 import store from '@/store'
 import { postCurrentUserUploadAvatar } from '@/common/request/api/vadmin/auth/user.js'
 
@@ -143,6 +156,7 @@ let PAGE_X, // 手按下的x位置
   DRAW_IMAGE_W = sysInfo.screenWidth // 设置生成的图片宽度
 
 export default {
+  mixins: [navBackMixin],
   /**
    * 页面的初始数据
    */

@@ -5,13 +5,14 @@ import {
   addUserListApi,
   delUserListApi,
   putUserListApi,
+  putUserBlockedApi,
   getUserApi,
   postExportUserQueryListApi
 } from '@/api/vadmin/auth/user'
 import { useTable } from '@/hooks/web/useTable'
 import { useI18n } from '@/hooks/web/useI18n'
 import { Table, TableColumn } from '@/components/Table'
-import { ElSwitch, ElRow, ElCol, ElMessage } from 'element-plus'
+import { ElSwitch, ElRow, ElCol, ElMessage, ElTag, ElMessageBox } from 'element-plus'
 import { Search } from '@/components/Search'
 import { FormSchema } from '@/components/Form'
 import { ContentWrap } from '@/components/ContentWrap'
@@ -142,6 +143,45 @@ const tableColumns = reactive<TableColumn[]>([
     }
   },
   {
+    field: 'user_tags',
+    label: '用户类型',
+    width: '200px',
+    show: true,
+    slots: {
+      default: (data: any) => {
+        const row = data.row
+        const tags = row.user_tags || []
+        return (
+          <>
+            {tags.map((t: string) => (
+              <ElTag key={t} size="small" style={{ marginRight: '6px', marginBottom: '4px' }}>
+                {t}
+              </ElTag>
+            ))}
+          </>
+        )
+      }
+    }
+  },
+  {
+    field: 'is_blocked',
+    label: '拉黑',
+    width: '100px',
+    show: true,
+    slots: {
+      default: (data: any) => {
+        const row = data.row
+        return (
+          <>
+            <ElTag type={row.is_blocked ? 'danger' : 'success'} size="small">
+              {row.is_blocked ? '已拉黑' : '正常'}
+            </ElTag>
+          </>
+        )
+      }
+    }
+  },
+  {
     field: 'depts',
     label: '部门',
     show: true,
@@ -200,7 +240,7 @@ const tableColumns = reactive<TableColumn[]>([
   },
   {
     field: 'action',
-    width: '150px',
+    width: '260px',
     label: '操作',
     show: true,
     slots: {
@@ -218,6 +258,16 @@ const tableColumns = reactive<TableColumn[]>([
               onClick={() => editAction(row)}
             >
               编辑
+            </BaseButton>
+            <BaseButton
+              type={row.is_blocked ? 'success' : 'warning'}
+              v-hasPermi={update}
+              link
+              size="small"
+              loading={blockLoading.value}
+              onClick={() => toggleBlock(row)}
+            >
+              {row.is_blocked ? '解除拉黑' : '拉黑'}
             </BaseButton>
             <BaseButton
               type="danger"
@@ -301,6 +351,26 @@ const searchSchema = reactive<FormSchema[]>([
         }
       ]
     }
+  },
+  {
+    field: 'is_blocked',
+    label: '拉黑',
+    component: 'Select',
+    componentProps: {
+      style: {
+        width: '214px'
+      },
+      options: [
+        {
+          label: '已拉黑',
+          value: true
+        },
+        {
+          label: '未拉黑',
+          value: false
+        }
+      ]
+    }
   }
 ])
 
@@ -312,6 +382,30 @@ const setSearchParams = (data: any) => {
 }
 
 const delLoading = ref(false)
+const blockLoading = ref(false)
+
+const toggleBlock = async (row: any) => {
+  const next = !row.is_blocked
+  try {
+    await ElMessageBox.confirm(
+      next ? '确定拉黑该用户？拉黑后将无法登录小程序与后台。' : '确定解除拉黑？',
+      '提示',
+      { type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  blockLoading.value = true
+  try {
+    const res = await putUserBlockedApi(row.id, { is_blocked: next })
+    if (res?.code === 200) {
+      ElMessage.success('操作成功')
+      getList()
+    }
+  } finally {
+    blockLoading.value = false
+  }
+}
 
 const delData = async (row?: any) => {
   delLoading.value = true

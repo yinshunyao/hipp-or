@@ -1,0 +1,101 @@
+/**
+ * 由 uni.scss 中的 SCSS 变量生成页面级 CSS 变量 --t-*，供各页面 / 组件使用。
+ * 改色调请编辑 uni.scss，勿在此硬编码色值。
+ */
+@import '@/uni.scss';
+
+.theme-light {
+  --t-root: #{$t-page-root};
+  --t-surface: #{$uni-bg-color};
+  --t-elevated: #{$t-surface-elevated};
+  --t-hover: #{$t-surface-hover};
+  --t-accent: #{$uni-color-primary};
+  --t-accent-from: #{$color-primary-light};
+  --t-accent-to: #{$uni-color-primary};
+  --t-accent-bg: #{$color-primary-bg};
+  --t-accent-text: #{$uni-text-color-inverse};
+  --t-accent-shadow: #{$t-accent-shadow-light};
+  --t-success: #{$uni-color-success};
+  --t-error: #{$uni-color-error};
+  --t-error-bg: #{$t-error-bg-light};
+  --t-error-border: #{$t-error-border-light};
+  --t-text-1: #{$uni-text-color};
+  --t-text-2: #{$t-text-secondary};
+  --t-text-3: #{$t-text-tertiary};
+  --t-text-4: #{$t-text-quaternary};
+  --t-border: #{$t-border-subtle};
+  --t-border-focus: #{$t-accent-focus-border};
+  --t-divider: #{$t-divider-line};
+  --t-shadow: #{$t-shadow-light};
+  --t-shadow-heavy: #{$t-shadow-heavy-light};
+  --t-shadow-up: #{$t-shadow-up-light};
+  --t-shadow-drop: #{$t-shadow-drop-light};
+  --t-pin-color: #{$uni-color-primary};
+  --t-pin-bg: #{$t-pin-bg-light};
+  --t-state-color: #{$uni-color-error};
+  --t-state-bg: #{$t-error-bg-light};
+  --t-end-color: #{$t-text-secondary};
+  --t-end-bg: #{$t-end-bg-light};
+  --t-login-ambient: #{$color-primary-bg};
+  --t-login-glow: #{$t-login-glow-light};
+  --t-ring-from: #{$t-ring-from};
+  --t-ring-to: #{$t-ring-to};
+  --t-ring-border: #{$t-ring-border-light};
+  --t-ring-shadow-glow: #{$t-ring-shadow-glow-light};
+  --t-logo-inset: #{$t-logo-inset-light};
+  --t-nav-bg: #{$t-nav-bg-light};
+  --t-nav-text: #{$t-nav-text-light};
+}
+
+.theme-dark {
+  --t-root: #{$t-page-root-dark};
+  --t-surface: #{$t-surface-dark};
+  --t-elevated: #{$t-elevated-dark};
+  --t-hover: #{$t-hover-dark};
+  --t-accent: #{$t-accent-dark};
+  --t-accent-from: #{$t-accent-from-dark};
+  --t-accent-to: #{$t-accent-to-dark};
+  --t-accent-bg: #{$t-accent-bg-dark};
+  --t-accent-text: #{$t-accent-text-dark};
+  --t-accent-shadow: #{$t-accent-shadow-dark};
+  --t-success: #{$t-success-dark};
+  --t-error: #{$t-error-dark};
+  --t-error-bg: #{$t-error-bg-dark};
+  --t-error-border: #{$t-error-border-dark};
+  --t-text-1: #{$t-text-1-dark};
+  --t-text-2: #{$t-text-2-dark};
+  --t-text-3: #{$t-text-3-dark};
+  --t-text-4: #{$t-text-4-dark};
+  --t-border: #{$t-border-dark};
+  --t-border-focus: #{$t-border-focus-dark};
+  --t-divider: #{$t-divider-dark};
+  --t-shadow: #{$t-shadow-dark};
+  --t-shadow-heavy: #{$t-shadow-heavy-dark};
+  --t-shadow-up: #{$t-shadow-up-dark};
+  --t-shadow-drop: #{$t-shadow-drop-dark};
+  --t-pin-color: #{$t-pin-color-dark};
+  --t-pin-bg: #{$t-pin-bg-dark};
+  --t-state-color: #{$t-state-color-dark};
+  --t-state-bg: #{$t-state-bg-dark};
+  --t-end-color: #{$t-end-color-dark};
+  --t-end-bg: #{$t-end-bg-dark};
+  --t-login-ambient: #{$t-login-ambient-dark};
+  --t-login-glow: #{$t-login-glow-dark};
+  --t-ring-from: #{$t-ring-from-dark};
+  --t-ring-to: #{$t-ring-to-dark};
+  --t-ring-border: #{$t-ring-border-dark};
+  --t-ring-shadow-glow: #{$t-ring-shadow-glow-dark};
+  --t-logo-inset: #{$t-logo-inset-dark};
+  --t-nav-bg: #{$t-nav-bg-dark};
+  --t-nav-text: #{$t-nav-text-dark};
+}
+
+page {
+  background-color: #{$t-page-root};
+  color: #{$uni-text-color};
+  --custom-tabbar-height: #{$mp-tabbar-height};
+  /* 供页面内嵌组件继承；自定义 tabBar 组件需在自身 wxss 再写一份 */
+  --tabbar-item-font-size: #{$mp-tabbar-label-px};
+  --tabbar-item-icon-size: #{$mp-tabbar-icon-px};
+  --tabbar-item-margin-bottom: 6px;
+}
