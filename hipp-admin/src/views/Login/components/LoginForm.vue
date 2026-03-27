@@ -14,6 +14,7 @@ import { useValidator } from '@/hooks/web/useValidator'
 import { FormSchema } from '@/components/Form'
 import { Icon } from '@/components/Icon'
 import { BaseButton } from '@/components/Button'
+import { normalizeLoginRedirectToRouterPath } from '@/utils/loginRedirect'
 
 const emit = defineEmits(['to-telephone'])
 
@@ -248,7 +249,9 @@ const getMenu = async () => {
       addRoute(route as RouteRecordRaw) // 动态添加可访问路由表
     })
     permissionStore.setIsAddRouters(true)
-    push({ path: redirect.value || permissionStore.addRouters[0].path })
+    push({
+      path: normalizeLoginRedirectToRouterPath(redirect.value) || permissionStore.addRouters[0].path
+    })
   }
 }
 

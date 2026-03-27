@@ -160,7 +160,8 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
+  // 与 vite.config base（VITE_BASE_PATH）一致，否则部署在子路径（如 /manager/）时会跳到 /login 而非 /manager/login
+  history: createWebHistory(import.meta.env.BASE_URL),
   strict: true,
   routes: constantRouterMap as RouteRecordRaw[],
   scrollBehavior: () => ({ left: 0, top: 0 })

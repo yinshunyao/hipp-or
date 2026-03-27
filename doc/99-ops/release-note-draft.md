@@ -2,6 +2,7 @@
 
 ## 2026-03-26（hipp-or）
 
+- hipp-uni（修复）：微信小程序键盘弹起时输入框被遮挡、顶栏消失——关闭 `textarea` 默认整页上推，改用「键盘高度占位 view」方案：在 `input-bar` 下方插入 `kb-spacer`（`height = keyboardHeight`），flex 布局自动收缩消息列表、上移输入条，顶栏与胶囊始终可见。三页（需求/商业/对话）统一接入 `mp-keyboard-offset` mixin。见 `doc/91-qa/【小程序对话】键盘弹起顶栏与菜单消失.md`。
 - hipp-api / hipp-uni：小程序对话流式新增 WebSocket（WSS）链路：后端增加 `WS /mp/chat/sessions/{id}/messages/ws`（token 鉴权、增量 `delta` / 完成 `done` / 错误 `error` 事件）；前端 `MP-WEIXIN` 分支改用 `uni.connectSocket` 实时渲染，连接失败自动回退 blocking 发送，保留现有非小程序发送逻辑。
 - hipp-uni：优化自定义底部 TabBar 真机视觉密度，统一下调栏高（`56px -> 50px`）、图标（`28px -> 24px`）与文案字号（`16px -> 13px`），并同步 `custom-tab-bar/theme.js` 与 `uni.scss` 设计令牌，改善「底栏过大不协调」观感。
 - hipp-api（修复）：`run.sh` 首次启动（无 `.venv`）分支改为复用统一的 `ensure_db_schema_before_run` 流程，不再直接 `init`；当目标库不存在时可先自动建库，再执行迁移/初始化，避免 Ubuntu 生产环境报 `Unknown database 'hipp'` 导致启动失败。见 `doc/91-qa/【登录认证】Ubuntu首次启动Unknown database导致初始化失败.md`。

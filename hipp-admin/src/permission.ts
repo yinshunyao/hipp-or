@@ -7,6 +7,10 @@ import { usePermissionStoreWithOut } from '@/store/modules/permission'
 import { usePageLoading } from '@/hooks/web/usePageLoading'
 import { useAuthStoreWithOut } from '@/store/modules/auth'
 import { getRoleMenusApi } from '@/api/login'
+import {
+  joinPublicPathForLoginRedirect,
+  normalizeLoginRedirectToRouterPath
+} from '@/utils/loginRedirect'
 
 const { start, done } = useNProgress()
 
@@ -45,7 +49,7 @@ router.beforeEach(async (to, from, next) => {
         router.addRoute(route as RouteRecordRaw) // 动态添加可访问路由表
       })
       const redirectPath = from.query.redirect || to.path
-      const redirect = decodeURIComponent(redirectPath as string)
+      const redirect = normalizeLoginRedirectToRouterPath(redirectPath as string)
       const nextData = to.path === redirect ? { ...to, replace: true } : { path: redirect }
       permissionStore.setIsAddRouters(true)
       next(nextData)
@@ -54,7 +58,9 @@ router.beforeEach(async (to, from, next) => {
     if (whiteList.indexOf(to.path) !== -1) {
       next()
     } else {
-      next(`/login?redirect=${to.path}`) // 否则全部重定向到登录页
+      next(
+        `/login?redirect=${encodeURIComponent(joinPublicPathForLoginRedirect(to.path))}` // 否则全部重定向到登录页
+      )
     }
   }
 })

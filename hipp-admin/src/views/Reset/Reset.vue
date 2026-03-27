@@ -11,6 +11,7 @@ import { usePermissionStore } from '@/store/modules/permission'
 import { RouteLocationNormalizedLoaded, RouteRecordRaw, useRouter } from 'vue-router'
 import { useAppStore } from '@/store/modules/app'
 import { Footer } from '@/components/Footer'
+import { normalizeLoginRedirectToRouterPath } from '@/utils/loginRedirect'
 
 const { required } = useValidator()
 const { addRoute, push, currentRoute } = useRouter()
@@ -130,7 +131,9 @@ const getMenu = async () => {
       addRoute(route as RouteRecordRaw) // 动态添加可访问路由表
     })
     permissionStore.setIsAddRouters(true)
-    push({ path: redirect.value || permissionStore.addRouters[0].path })
+    push({
+      path: normalizeLoginRedirectToRouterPath(redirect.value) || permissionStore.addRouters[0].path
+    })
   }
 }
 </script>

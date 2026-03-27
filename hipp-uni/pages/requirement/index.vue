@@ -40,14 +40,15 @@
       <view class="readonly-tip"><text>{{ readonlySessionTip }}</text></view>
       <!-- #endif -->
     </view>
-    <view class="input-bar">
+    <view class="input-bar" :class="{ 'input-bar--kb-up': keyboardHeight > 0 }">
       <view class="input-shell">
-        <textarea v-model="inputText" class="input-text" :placeholder="inputPlaceholder" :placeholder-style="'color:' + tc.text3" :disabled="isReadonlySession || !sessionId" :auto-height="true" :maxlength="4000" :adjust-position="true" :cursor-spacing="24" :show-confirm-bar="false" @keydown="onInputKeydown" />
+        <textarea v-model="inputText" class="input-text" :placeholder="inputPlaceholder" :placeholder-style="'color:' + tc.text3" :disabled="isReadonlySession || !sessionId" :auto-height="true" :maxlength="4000" :adjust-position="adjustPositionForInput" :cursor-spacing="24" :show-confirm-bar="false" @keyboardheightchange="onKbHeightChange" @keydown="onInputKeydown" />
         <button class="send-fab" :class="{ 'send-fab--disabled': !inputText.trim() || loading || isReadonlySession || !sessionId }" :disabled="!inputText.trim() || loading || isReadonlySession || !sessionId" hover-class="send-fab--hover" @tap="sendMessage">
           <text class="send-fab-icon">↑</text>
         </button>
       </view>
     </view>
+    <view v-if="keyboardHeight > 0" class="kb-spacer" :style="{ height: keyboardHeight + 'px' }"></view>
     </view>
   </view>
 </template>
@@ -55,14 +56,16 @@
 <script>
 import { resolveSceneAgent, createChatSession, getArchivedTopics, getChatMessages, sendChatMessage, sendChatMessageStream, getChatSession } from '@/common/request/api/mp/chat.js'
 import { themeMixin } from '@/common/mixins/theme.js'
+import mpKeyboardOffsetMixin from '@/common/mixins/mp-keyboard-offset.js'
 
 export default {
-  mixins: [themeMixin],
+  mixins: [themeMixin, mpKeyboardOffsetMixin],
   data() {
     return {
       sessionId: null, sceneAgentId: null, sessionTitle: '需求', sessionAgentStatus: 'active', sessionTopicClosed: false,
       messages: [], archivedTopicTips: [], archivedHasMore: false, archivedLoading: false,
       inputText: '', loading: false, scrollTop: 0,
+      mpKeyboardTabPage: true
     }
   },
   async onShow() { await this.ensureSceneSession(); if (this.sessionId) await this.bootstrap() },
@@ -345,6 +348,8 @@ page {
   padding-bottom: calc(#{$mp-gap-4} + var(--custom-tabbar-height) + env(safe-area-inset-bottom));
   background: var(--t-surface); box-shadow: var(--t-shadow-up);
 }
+.input-bar--kb-up { padding-bottom: $mp-gap-4; }
+.kb-spacer { flex-shrink: 0; width: 100%; }
 .readonly-notice-slot { flex-shrink: 0; width: 100%; box-sizing: border-box; }
 .readonly-tip {
   padding: $mp-gap-4 $mp-gap-5; border-radius: $mp-radius-md;
