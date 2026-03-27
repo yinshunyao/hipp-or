@@ -1,15 +1,18 @@
 /**
  * 自定义 tabBar 会随 tab 页重建，data 会回到初始值，需按栈同步 activePath。
- * switchTab 后页面栈更新晚于 nextTick，deferSyncActive 内立即 + 80ms 二次 sync。
- * onChange 不提前 setData(activePath)，避免旧页 tabBar 先高亮再销毁造成闪烁/延迟感；
+ * switchTab 后页面栈更新晚于 nextTick，需多次短间隔重试同步 activePath。
+ * onChange 先更新本地 activePath，再由多次 syncActive 做最终校准。
  * 激活态仅由当前页 pageLifetimes.show → deferSyncActive → syncActive 决定。
  */
 const TAB_THEME = require('./theme.js')
 const THEME_STORAGE_KEY = 'app_theme_mode'
+const SYNC_RETRY_DELAYS = [0, 80, 180, 320, 500, 800, 1200]
 
 Component({
   data: {
     iconSize: `${TAB_THEME.TAB_ICON_PX}px`,
+    // 提升层级，避免被页面内 fixed 输入条覆盖（线上更常见）
+    tabBarZIndex: 1200,
     activePath: "",
     /** 仅在实际处于 tab 页时展示，避免 login 等非 tab 页错误渲染 */
     tabBarVisible: false,
@@ -49,19 +52,36 @@ Component({
   lifetimes: {
     attached() {
       this.syncThemeMode();
-      this.deferSyncActive("attach");
+      this.bindRouteSync();
+      this.deferSyncActive();
     },
     detached() {
+      this.unbindRouteSync();
       this.clearSyncTimers();
     }
   },
   pageLifetimes: {
     show() {
       this.syncThemeMode();
-      this.deferSyncActive("show");
+      this.deferSyncActive();
     }
   },
   methods: {
+    bindRouteSync() {
+      if (typeof wx.onAppRoute !== 'function') return;
+      this._onAppRoute = (routeInfo) => {
+        const path = this.normalizeRoute(
+          routeInfo && (routeInfo.path || routeInfo.route || routeInfo.url)
+        );
+        this.syncActive(path);
+      };
+      wx.onAppRoute(this._onAppRoute);
+    },
+    unbindRouteSync() {
+      if (!this._onAppRoute || typeof wx.offAppRoute !== 'function') return;
+      wx.offAppRoute(this._onAppRoute);
+      this._onAppRoute = null;
+    },
     syncThemeMode() {
       let mode = 'light';
       try {
@@ -83,42 +103,37 @@ Component({
       });
     },
     clearSyncTimers() {
-      if (this._attachTimer) {
-        clearTimeout(this._attachTimer);
-        this._attachTimer = null;
+      if (Array.isArray(this._retryTimers) && this._retryTimers.length) {
+        this._retryTimers.forEach((t) => clearTimeout(t));
       }
-      if (this._showTimer) {
-        clearTimeout(this._showTimer);
-        this._showTimer = null;
-      }
+      this._retryTimers = [];
     },
     /**
-     * 先立即读栈同步一次，再在 80ms 后同步一次（覆盖 switchTab 栈未就绪）
+     * 真机路由更新可能慢于组件 show，按阶段重试读取页面栈同步激活态
      */
-    deferSyncActive(source) {
-      this.syncActive();
-      const key = source === "show" ? "_showTimer" : "_attachTimer";
-      if (this[key]) {
-        clearTimeout(this[key]);
-        this[key] = null;
-      }
-      this[key] = setTimeout(() => {
-        this[key] = null;
-        this.syncActive();
-      }, 80);
+    deferSyncActive() {
+      this.clearSyncTimers();
+      this._retryTimers = SYNC_RETRY_DELAYS.map((delay) =>
+        setTimeout(() => {
+          this.syncActive();
+        }, delay)
+      );
     },
     normalizeRoute(route) {
       if (!route) return "";
       const r = String(route).trim().split("?")[0];
       return r.startsWith("/") ? r : `/${r}`;
     },
-    syncActive() {
+    syncActive(routeOverride) {
       // 每次同步激活态前都重读主题，覆盖部分机型上 pageLifetimes.show 触发不稳定的情况
       this.syncThemeMode();
-      const pages = getCurrentPages();
-      if (!pages || !pages.length) return;
-      const current = pages[pages.length - 1];
-      const route = this.normalizeRoute(current && current.route);
+      let route = this.normalizeRoute(routeOverride);
+      if (!route) {
+        const pages = getCurrentPages();
+        if (!pages || !pages.length) return;
+        const current = pages[pages.length - 1];
+        route = this.normalizeRoute(current && current.route);
+      }
       const idx = this.data.list.findIndex((item) => item.path === route);
 
       if (idx < 0) {
@@ -142,14 +157,16 @@ Component({
           ? this.data.list[detail]
           : this.data.list.find((item) => item.path === this.normalizeRoute(detail));
       if (!tab || this.data.isSwitching) return;
-      this.setData({ isSwitching: true });
+      this.setData({ isSwitching: true, activePath: tab.path, tabBarVisible: true });
       wx.switchTab({
         url: tab.path,
         complete: () => {
           this.setData({ isSwitching: false });
+          this.deferSyncActive();
         },
         fail: () => {
           this.setData({ isSwitching: false });
+          this.deferSyncActive();
         }
       });
     }

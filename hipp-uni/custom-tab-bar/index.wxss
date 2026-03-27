@@ -1,9 +1,9 @@
 /* wxss 不能 require JS；色值 / 字号与 theme.js、uni.scss $mp-tabbar-* 保持一致 */
 .custom-vant-tabbar {
-  --tabbar-height: 56px;
-  --tabbar-item-font-size: 16px;
-  --tabbar-item-icon-size: 28px;
-  --tabbar-item-margin-bottom: 5px;
+  --tabbar-height: 50px;
+  --tabbar-item-font-size: 13px;
+  --tabbar-item-icon-size: 24px;
+  --tabbar-item-margin-bottom: 3px;
   --tabbar-item-line-height: 1.15;
   border-radius: 0;
   background: #ffffff; /* theme.js SURFACE_BG */

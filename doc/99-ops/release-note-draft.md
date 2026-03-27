@@ -2,6 +2,8 @@
 
 ## 2026-03-26（hipp-or）
 
+- hipp-api / hipp-uni：小程序对话流式新增 WebSocket（WSS）链路：后端增加 `WS /mp/chat/sessions/{id}/messages/ws`（token 鉴权、增量 `delta` / 完成 `done` / 错误 `error` 事件）；前端 `MP-WEIXIN` 分支改用 `uni.connectSocket` 实时渲染，连接失败自动回退 blocking 发送，保留现有非小程序发送逻辑。
+- hipp-uni：优化自定义底部 TabBar 真机视觉密度，统一下调栏高（`56px -> 50px`）、图标（`28px -> 24px`）与文案字号（`16px -> 13px`），并同步 `custom-tab-bar/theme.js` 与 `uni.scss` 设计令牌，改善「底栏过大不协调」观感。
 - hipp-api（修复）：`run.sh` 首次启动（无 `.venv`）分支改为复用统一的 `ensure_db_schema_before_run` 流程，不再直接 `init`；当目标库不存在时可先自动建库，再执行迁移/初始化，避免 Ubuntu 生产环境报 `Unknown database 'hipp'` 导致启动失败。见 `doc/91-qa/【登录认证】Ubuntu首次启动Unknown database导致初始化失败.md`。
 - hipp-uni / hipp-api：修复「我的」页两处问题——`修改密码`、`关于我们` 页面顶部导航栏改为主题变量，深色模式下不再固定白底；修改密码流程新增「当前密码」必填与后端旧密码正确性校验（`ResetPwd.old_password` + `reset_current_password` 校验），防止未验证旧密码直接改密。见 `doc/91-qa/【小程序我的页】修改密码与关于我们未适配深色模式且缺少当前密码校验.md`。
 

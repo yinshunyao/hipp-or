@@ -48,6 +48,48 @@ hipp 需求对接工程：在 [kinit](https://github.com/vvandk/kinit) 基础上
 
 - **`HIPP_DIFY_HTTPX_VERIFY`**：后端调用 Dify 时是否校验 HTTPS 证书；内网自签可设为 `false`（仅建议开发/内网）
 
+### 5. 生产环境部署
+- supervisor 启动 Python API，安装：
+```shell
+python3 -m pip install supervisor
+```
+- Nginx（HTTPS）可参考如下仅本项目相关配置（按实际路径替换）：
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name <your-domain>;
+
+    ssl_certificate /etc/nginx/cert.pem;
+    ssl_certificate_key /etc/nginx/key.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    # hipp-admin 前端（管理端）
+    location /manager/ {
+        alias /home/dist/;
+        try_files $uri $uri/ /manager/index.html;
+    }
+
+    # hipp-api 静态媒体文件
+    location /media/ {
+        alias /home/hipp-or/hipp-api/static/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # hipp-api 反向代理（示例：supervisor 启动在 46000 端口）
+    location /api/ {
+        proxy_pass http://127.0.0.1:46000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
 ---
 
 ## 详细文档索引

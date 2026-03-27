@@ -134,75 +134,180 @@ export function createDifySseTextAccumulator() {
 }
 
 /**
- * 微信小程序：分块接收 Dify 透传的 SSE，通过 onDelta 回传当前累积的助手全文。
- * 非微信环境或失败时返回 false，调用方应回退到 sendChatMessage。
+ * 微信小程序 WebSocket 流式发送。
+ * 非微信环境或失败时 reject，调用方应回退到 sendChatMessage。
  *
  * @param {number} sessionId
  * @param {string} query
  * @param {(fullText: string) => void} onDelta
- * @returns {Promise<{ topicClosed: boolean }>} 流式完成时返回是否话题已归档
+ * @returns {Promise<{ topicClosed: boolean }>}
  */
 export function sendChatMessageStream(sessionId, query, onDelta) {
   // #ifdef MP-WEIXIN
   return new Promise((resolve, reject) => {
-    const token = getToken()
-    const acc = createDifySseTextAccumulator()
-    const decoder = new TextDecoder('utf-8')
-    const url = `${config.baseUrl}/mp/chat/sessions/${sessionId}/messages/stream`
-    const task = uni.request({
-      url,
-      method: 'POST',
-      header: {
-        'Content-Type': 'application/json',
-        Authorization: token || ''
-      },
-      data: { query },
-      timeout: 300000,
-      enableChunked: true,
-      success(res) {
-        const text = acc.end()
-        onDelta && onDelta(text)
-        const topicClosed = acc.getTopicClosed()
-        const headers = res.header || {}
-        const contentType = String(headers['content-type'] || headers['Content-Type'] || '').toLowerCase()
-        if (res.statusCode >= 200 && res.statusCode < 300 && contentType.includes('text/event-stream')) {
-          resolve({ topicClosed })
-          return
-        }
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          let bodyText = ''
-          try {
-            if (typeof res.data === 'string') {
-              bodyText = res.data
-            } else {
-              bodyText = decoder.decode(res.data || new ArrayBuffer(0), { stream: false })
-            }
-            const payload = JSON.parse(bodyText)
-            reject(new Error(payload.message || '发送失败'))
-            return
-          } catch (e) {
-            reject(new Error('发送失败'))
-            return
-          }
-        }
-        reject(new Error(`HTTP ${res.statusCode}`))
-      },
-      fail(err) {
-        reject(err)
-      }
-    })
-    if (!task || typeof task.onChunkReceived !== 'function') {
-      if (task && typeof task.abort === 'function') {
-        task.abort()
-      }
-      reject(new Error('no chunked'))
-      return
+    if (typeof uni === 'undefined' || typeof uni.connectSocket !== 'function') {
+      return reject(new Error('no stream'))
     }
-    task.onChunkReceived((res) => {
-      const chunk = decoder.decode(res.data, { stream: true })
-      const text = acc.push(chunk)
-      onDelta && onDelta(text)
+    const rawToken = String(getToken() || '')
+    const jwtToken = rawToken.replace(/^bearer\s+/i, '').trim()
+    const wsBase = String(config.baseUrl || '')
+      .replace(/^http:\/\//i, 'ws://')
+      .replace(/^https:\/\//i, 'wss://')
+    if (!/^wss?:\/\//i.test(wsBase)) {
+      return reject(new Error('bad ws base'))
+    }
+    const url = `${wsBase}/mp/chat/sessions/${sessionId}/messages/ws?token=${encodeURIComponent(jwtToken)}`
+    const tag = '[WS:' + sessionId + ']'
+    console.log(tag, 'connecting', url.slice(0, 100))
+
+    let done = false
+    let sent = false
+    let fullText = ''
+    let hasServerMsg = false
+    let timeoutId = null
+
+    const finish = (err, payload) => {
+      if (done) return
+      done = true
+      if (timeoutId) { clearTimeout(timeoutId); timeoutId = null }
+      console.log(tag, err ? 'FINISH:ERR ' + err.message : 'FINISH:OK')
+      try { socketTask.close({}) } catch (_) {}
+      err ? reject(err) : resolve(payload || { topicClosed: false })
+    }
+
+    const decodeData = (d) => {
+      if (typeof d === 'string') return d
+      if (d && typeof ArrayBuffer !== 'undefined' && d instanceof ArrayBuffer) {
+        try { return new TextDecoder('utf-8').decode(d) } catch (_) {}
+        const a = new Uint8Array(d)
+        let s = ''
+        for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i])
+        return s
+      }
+      try { return JSON.stringify(d) } catch (_) { return '' }
+    }
+
+    const dispatch = (msg) => {
+      if (!msg || typeof msg !== 'object') return false
+      const ev = msg.event
+      if (ev === 'delta' || ev === 'message' || ev === 'agent_message') {
+        if (typeof msg.full_text === 'string') fullText = msg.full_text
+        else if (typeof msg.answer === 'string' && msg.answer) fullText += msg.answer
+        onDelta && onDelta(fullText)
+        return true
+      }
+      if (ev === 'ready') {
+        console.log(tag, 'got ready -> doSend')
+        doSend()
+        return true
+      }
+      if (ev === 'done') {
+        console.log(tag, 'got done, topicClosed=' + !!msg.topic_closed)
+        onDelta && onDelta(fullText)
+        finish(null, { topicClosed: !!msg.topic_closed })
+        return true
+      }
+      if (ev === 'error') {
+        console.log(tag, 'got error:', msg.message)
+        finish(new Error(msg.message || 'stream error'))
+        return true
+      }
+      return false
+    }
+
+    const queryPayload = JSON.stringify({ query })
+
+    const doSend = () => {
+      if (done || sent) return
+      console.log(tag, 'doSend', queryPayload.length, 'bytes')
+      try {
+        socketTask.send({
+          data: queryPayload,
+          success() { sent = true; console.log(tag, 'send OK') },
+          fail(e) {
+            console.log(tag, 'send FAIL', e && e.errMsg)
+            setTimeout(() => {
+              if (done || sent) return
+              console.log(tag, 'send retry#1')
+              try {
+                socketTask.send({
+                  data: queryPayload,
+                  success() { sent = true; console.log(tag, 'retry#1 OK') },
+                  fail(e2) {
+                    console.log(tag, 'retry#1 FAIL', e2 && e2.errMsg)
+                    setTimeout(() => {
+                      if (done || sent) return
+                      console.log(tag, 'send retry#2')
+                      try {
+                        socketTask.send({
+                          data: queryPayload,
+                          success() { sent = true; console.log(tag, 'retry#2 OK') },
+                          fail() { console.log(tag, 'retry#2 FAIL, giving up send') }
+                        })
+                      } catch (_) {}
+                    }, 500)
+                  }
+                })
+              } catch (_) {}
+            }, 300)
+          }
+        })
+      } catch (ex) {
+        console.log(tag, 'send threw', ex)
+      }
+    }
+
+    // 1. 创建连接
+    let socketTask
+    try {
+      socketTask = uni.connectSocket({ url, success() {}, fail() {} })
+    } catch (e) {
+      return reject(new Error('ws open failed'))
+    }
+    if (!socketTask) {
+      return reject(new Error('no socket task'))
+    }
+
+    // 2. 立即注册全部事件（必须紧跟 connectSocket，避免竞态丢 onOpen）
+    socketTask.onOpen(() => {
+      console.log(tag, 'onOpen')
+      doSend()
     })
+
+    socketTask.onMessage((evt) => {
+      const raw = decodeData(evt && evt.data)
+      if (!raw) return
+      hasServerMsg = true
+      console.log(tag, 'onMsg', raw.length > 200 ? raw.slice(0, 200) + '...' : raw)
+      try { if (dispatch(JSON.parse(raw))) return } catch (_) {}
+      const lines = raw.split('\n')
+      for (const ln of lines) {
+        const t = ln.trim()
+        if (!t.startsWith('data:')) continue
+        const p = t.slice(5).trim()
+        if (!p || p === '[DONE]') continue
+        try { if (dispatch(JSON.parse(p))) return } catch (_) {}
+      }
+    })
+
+    socketTask.onError((e) => {
+      console.log(tag, 'onError', e && e.errMsg)
+      if (!hasServerMsg) finish(new Error((e && e.errMsg) || 'ws error'))
+    })
+
+    socketTask.onClose((e) => {
+      console.log(tag, 'onClose code=' + (e && e.code), 'reason=' + (e && e.reason))
+      if (done) return
+      if (hasServerMsg) {
+        onDelta && onDelta(fullText)
+        finish(null, { topicClosed: false })
+        return
+      }
+      finish(new Error('ws closed unexpectedly'))
+    })
+
+    // 3. 超时保护
+    timeoutId = setTimeout(() => finish(new Error('ws timeout 5min')), 300000)
   })
   // #endif
   // #ifndef MP-WEIXIN

@@ -100,7 +100,8 @@ page {
 
 .mine-container {
   width: 100%; background: var(--t-root);
-  padding-bottom: calc(#{$mp-account-tab-extra} + var(--custom-tabbar-height) + env(safe-area-inset-bottom));
+  /* 仅保留 tabBar + 安全区，避免首屏内容被额外留白挤出一屏 */
+  padding-bottom: calc(var(--custom-tabbar-height) + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 .mine-header {
@@ -126,7 +127,7 @@ page {
   color: var(--t-text-1); letter-spacing: $mp-account-greet-track;
 }
 .content-section { padding: 0; }
-.logout-wrap { padding: 60rpx 30rpx 0; }
+.logout-wrap { padding: 36rpx 30rpx 0; }
 .menu-icon--van {
   font-size: 40rpx;
   color: inherit;

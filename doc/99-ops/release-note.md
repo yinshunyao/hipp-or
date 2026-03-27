@@ -2,6 +2,12 @@
 
 ## hipp-or（hipp-api / hipp-uni / hipp-admin）
 
+### 2026-03-27
+
+- 小程序对话流式新增 **WebSocket（WSS）** 链路：后端 `WS /mp/chat/sessions/{id}/messages/ws`（token 鉴权、`delta` / `done` / `error` 事件）；微信小程序端 `uni.connectSocket` 实时渲染，连接失败自动回退 blocking，其它端保持原发送逻辑。
+- 自定义底部 TabBar 真机密度优化：统一下调栏高（`56px → 50px`）、图标（`28px → 24px`）与文案字号（`16px → 13px`），并同步 `custom-tab-bar/theme.js` 与 `uni.scss` 设计令牌。
+- **hipp-api** `run.sh` 首次启动（无 `.venv`）分支改为复用统一 `ensure_db_schema_before_run`，目标库不存在时可先自动建库再迁移/初始化，避免 Ubuntu 生产环境 `Unknown database 'hipp'` 导致启动失败。
+
 ### 2026-03-26
 
 - 修复小程序「我的」页深色模式适配：`修改密码`、`关于我们` 页面顶部导航栏改为主题变量，避免固定白底导致的显示异常。

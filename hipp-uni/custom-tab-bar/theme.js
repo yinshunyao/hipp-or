@@ -7,7 +7,7 @@ module.exports = {
   INACTIVE_COLOR: '#8C95A3',
   SURFACE_BG: '#FFFFFF',
   /** 与 uni.scss $mp-tabbar-icon-px 一致 */
-  TAB_ICON_PX: 28,
-  /** 与 uni.scss $mp-tabbar-label-px 一致（约对齐 32rpx 列表标题） */
-  TAB_FONT_PX: 16
+  TAB_ICON_PX: 24,
+  /** 与 uni.scss $mp-tabbar-label-px 一致（兼顾真机可读性与紧凑布局） */
+  TAB_FONT_PX: 13
 }

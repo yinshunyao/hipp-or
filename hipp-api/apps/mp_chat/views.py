@@ -1,13 +1,49 @@
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter, Depends, HTTPException, Query
+import asyncio
+import json
+import logging
+
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket
 from fastapi.responses import StreamingResponse
 
 from apps.mp_chat import crud, schemas
+from apps.vadmin.auth.crud import UserDal
 from apps.vadmin.auth.utils.current import AllUserAuth
 from apps.vadmin.auth.utils.validation.auth import Auth
+from application import settings
+from core.database import session_factory
+from core.exception import CustomException
 from utils.response import SuccessResponse
 
 app = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+async def _ws_auth_user(token_raw: str):
+    token = (token_raw or "").strip()
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+    if not token:
+        raise CustomException("请您先登录！", code=403)
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except jwt.PyJWTError as e:
+        raise CustomException("无效认证，请您重新登录", code=403) from e
+    telephone = payload.get("sub")
+    is_refresh = payload.get("is_refresh")
+    password = payload.get("password")
+    if not telephone or is_refresh or not password:
+        raise CustomException("未认证，请您重新登录", code=403)
+    async with session_factory() as db:
+        user = await UserDal(db).get_data(telephone=telephone, password=password, v_return_none=True)
+        if not user:
+            raise CustomException("未认证，请您重新登录", code=401)
+        if getattr(user, "is_blocked", False):
+            raise CustomException("账号已被拉黑", code=401)
+        if not user.is_active:
+            raise CustomException("用户已被冻结！", code=401)
+        return user
 
 
 @app.get(
@@ -169,3 +205,74 @@ async def post_message_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.websocket("/sessions/{session_id}/messages/ws")
+async def post_message_stream_ws(websocket: WebSocket, session_id: int):
+    await websocket.accept()
+    try:
+        await websocket.send_json({"event": "ready"})
+        token = websocket.query_params.get("token", "")
+        user = await _ws_auth_user(token)
+
+        # 兼容两种调用：1) query string 直接传 query；2) 首条 WS 文本消息传 JSON
+        query = str(websocket.query_params.get("query") or "").strip()
+        if not query:
+            try:
+                payload_text = await asyncio.wait_for(websocket.receive_text(), timeout=60)
+            except asyncio.TimeoutError as e:
+                raise CustomException("等待消息超时，请重试") from e
+            try:
+                payload = json.loads(payload_text or "{}")
+            except json.JSONDecodeError as e:
+                raise CustomException("消息格式错误") from e
+            query = str(payload.get("query") or payload.get("message") or "").strip()
+        if not query:
+            raise CustomException("query 不能为空")
+
+        async with session_factory() as db:
+            dal_s = crud.ChatSessionDal(db)
+            sess = await dal_s.get_session_for_participant(session_id, user.id)
+            if getattr(sess, "session_kind", "dify") == "human_support":
+                raise CustomException("人工客服会话不支持流式发送，请使用同步接口")
+            agent = await dal_s.assert_session_agent_sendable(sess)
+            dal_s.assert_session_topic_sendable(sess)
+            dal_m = crud.ChatMessageDal(db)
+            full = ""
+            topic_closed = False
+            async for chunk in dal_m.stream_user_and_bot(
+                session_id_val=sess.id,
+                dify_conversation_id_initial=sess.dify_conversation_id,
+                api_server=agent.api_server,
+                app_key=agent.app_key,
+                user_id=user.id,
+                query=query,
+            ):
+                line = chunk.decode("utf-8", errors="ignore").strip()
+                if not line.startswith("data:"):
+                    continue
+                raw = line[5:].strip()
+                if not raw:
+                    continue
+                try:
+                    evt = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if evt.get("event") in ("message", "agent_message"):
+                    answer = evt.get("answer")
+                    if isinstance(answer, str) and answer:
+                        full += answer
+                        await websocket.send_json({"event": "delta", "answer": answer, "full_text": full})
+                elif evt.get("event") == "mp_topic":
+                    topic_closed = bool(evt.get("topic_closed"))
+                    await websocket.send_json({"event": "done", "topic_closed": topic_closed})
+            if not topic_closed:
+                await websocket.send_json({"event": "done", "topic_closed": False})
+    except CustomException as e:
+        await websocket.send_json({"event": "error", "message": str(getattr(e, "msg", "") or e)})
+    except Exception as e:
+        detail = str(e).strip() or e.__class__.__name__
+        logger.exception("mp_chat ws stream failed: session_id=%s", session_id)
+        await websocket.send_json({"event": "error", "message": detail})
+    finally:
+        await websocket.close()

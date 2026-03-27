@@ -186,14 +186,14 @@ $mp-border: 2rpx;
 $mp-hit-fab: 72rpx;
 $mp-hit-fab-icon: 36rpx;
 $mp-gap-micro: 2rpx;
-/* 与 Vant tabbar --tabbar-height 对齐（约 56px → 112rpx@375 宽） */
-$mp-tabbar-height: 112rpx;
+/* 与 Vant tabbar --tabbar-height 对齐（约 50px → 100rpx@375 宽） */
+$mp-tabbar-height: 100rpx;
 
 /* 自定义导航栏标题：与列表主标题 $mp-font-title 一致（需 navigationStyle:custom + uni-nav-bar） */
 $mp-nav-title-font: $mp-font-title;
-/* 底部 Tab：与 32rpx 主标题视觉对齐（wxss 中需写死 px 时请与此同步） */
-$mp-tabbar-label-px: 16px;
-$mp-tabbar-icon-px: 28px;
+/* 底部 Tab：真机更紧凑的字号与图标（wxss 中需写死 px 时请与此同步） */
+$mp-tabbar-label-px: 13px;
+$mp-tabbar-icon-px: 24px;
 
 /* 登录页：光晕 / 聚焦（与 theme --t-* 配合） */
 $mp-auth-logo-halo: 60rpx;

@@ -5,6 +5,7 @@
     active="{{ activePath }}"
     active-color="{{ activeColor }}"
     inactive-color="{{ inactiveColor }}"
+    z-index="{{ tabBarZIndex }}"
     fixed="{{ true }}"
     border="{{ false }}"
     safe-area-inset-bottom="{{ true }}"

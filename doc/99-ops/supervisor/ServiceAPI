@@ -1,0 +1,13 @@
+[program:api]
+directory=/home/hipp-or/hipp-api
+command=/home/hipp-or/hipp-api/run.sh
+autostart=true
+autorestart=true
+priority=10
+user=root
+redirect_stderr=true
+stopasgroup=true
+killasgroup=true
+stdout_logfile=%(here)s/log/%(program_name)s.std
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=50

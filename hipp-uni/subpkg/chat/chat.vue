@@ -64,7 +64,7 @@
     <view v-if="showInputBar" class="input-bar">
       <view class="input-shell">
         <textarea v-model="inputText" class="input-text" :placeholder="inputPlaceholder" :placeholder-style="'color:' + tc.text3" :disabled="isReadonlySession" :auto-height="true" :maxlength="4000" :adjust-position="true" :cursor-spacing="24" :show-confirm-bar="false" @keydown="onInputKeydown" />
-        <button class="send-fab" :class="{ 'send-fab--disabled': !inputText.trim() || loading || isReadonlySession }" :disabled="!inputText.trim() || loading || isReadonlySession" hover-class="send-fab--hover" @click="sendMessage">
+        <button class="send-fab" :class="{ 'send-fab--disabled': !inputText.trim() || loading || isReadonlySession || !sessionId }" :disabled="!inputText.trim() || loading || isReadonlySession || !sessionId" hover-class="send-fab--hover" @tap="sendMessage">
           <text class="send-fab-icon">↑</text>
         </button>
       </view>
@@ -260,7 +260,11 @@ export default {
     },
     async sendMessage() {
       const t = this.inputText.trim()
-      if (!t || this.loading || !this.sessionId || this.isReadonlySession) return
+      if (!t || this.loading || this.isReadonlySession) return
+      if (!this.sessionId) {
+        uni.showToast({ title: '会话初始化中，请稍后重试', icon: 'none' })
+        return
+      }
       this.inputText = ''
       if (this.sessionTopicClosed && this.sessionAgentStatus === 'active') {
         const ok = await this.ensureWritableSessionForNewTopic()
@@ -294,8 +298,20 @@ export default {
       this.loading = true; this.$nextTick(() => this.scrollToBottom())
       const fallbackBlocking = async () => { const res = await sendChatMessage(this.sessionId, query); const p = (res && res.data) || {}; if (this.messages[aiIndex]) this.messages[aiIndex].content = p.answer || '（无内容）'; if (p.topic_closed) { uni.showToast({ title: '话题已结束', icon: 'none' }); await this.refreshSessionAfterTopic() } }
       try {
-        try { const sr = await sendChatMessageStream(this.sessionId, query, (full) => { if (this.messages[aiIndex]) this.messages[aiIndex].content = full; this.$nextTick(() => this.scrollToBottom()) }); if (this.messages[aiIndex] && !String(this.messages[aiIndex].content || '').trim()) this.messages[aiIndex].content = '（无内容）'; if (sr && sr.topicClosed) { uni.showToast({ title: '话题已结束', icon: 'none' }); await this.refreshSessionAfterTopic() } }
-        catch (e) { const msg = (e && e.message) || ''; if (msg === 'no stream' || msg === 'no chunked') await fallbackBlocking(); else throw e }
+        try {
+          const sr = await sendChatMessageStream(this.sessionId, query, (full) => {
+            if (this.messages[aiIndex]) this.messages[aiIndex].content = full
+            this.$nextTick(() => this.scrollToBottom())
+          })
+          if (this.messages[aiIndex] && !String(this.messages[aiIndex].content || '').trim()) this.messages[aiIndex].content = '（无内容）'
+          if (sr && sr.topicClosed) {
+            uni.showToast({ title: '话题已结束', icon: 'none' })
+            await this.refreshSessionAfterTopic()
+          }
+        } catch (e) {
+          // 真机优先稳定性：流式链路任意失败都回退 blocking 发送
+          await fallbackBlocking()
+        }
         if (this.messages[userIndex]) this.messages[userIndex].sendStatus = 'sent'
       } catch (e) { const msg = (e && e.message) || ''; if (msg.includes('删除')) this.sessionAgentStatus = 'deleted'; else if (msg.includes('下架')) this.sessionAgentStatus = 'offline'; if (this.messages[userIndex]) this.messages[userIndex].sendStatus = 'failed'; if (this.messages[aiIndex]) this.messages[aiIndex].content = '发送失败，请稍后重试。' }
       finally { this.loading = false; this.$nextTick(() => this.scrollToBottom()) }

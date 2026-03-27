@@ -43,7 +43,7 @@
     <view class="input-bar">
       <view class="input-shell">
         <textarea v-model="inputText" class="input-text" :placeholder="inputPlaceholder" :placeholder-style="'color:' + tc.text3" :disabled="isReadonlySession || !sessionId" :auto-height="true" :maxlength="4000" :adjust-position="true" :cursor-spacing="24" :show-confirm-bar="false" @keydown="onInputKeydown" />
-        <button class="send-fab" :class="{ 'send-fab--disabled': !inputText.trim() || loading || isReadonlySession || !sessionId }" :disabled="!inputText.trim() || loading || isReadonlySession || !sessionId" hover-class="send-fab--hover" @click="sendMessage">
+        <button class="send-fab" :class="{ 'send-fab--disabled': !inputText.trim() || loading || isReadonlySession || !sessionId }" :disabled="!inputText.trim() || loading || isReadonlySession || !sessionId" hover-class="send-fab--hover" @tap="sendMessage">
           <text class="send-fab-icon">↑</text>
         </button>
       </view>

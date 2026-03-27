@@ -13,6 +13,14 @@ pnpm run dev
 ```
 
 # 发布打包
+
+## 配置.env
+```shell
+# 如果线上不是部署在域名根路径，而是子路径（如 https://xx.com/hipp-admin/），需要改成：
+
+VITE_BASE_PATH=/hipp-admin/
+# 然后重新 pnpm build:pro 并重新发布 dist
+```
 ```bash
 # 使用.env.pro配置
 #pnpm run build:pro
