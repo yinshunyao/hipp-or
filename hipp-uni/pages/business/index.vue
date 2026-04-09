@@ -8,6 +8,14 @@
       :background-color="'var(--t-nav-bg)'"
       :color="'var(--t-nav-text)'"
     />
+    <view v-if="guestBannerText" class="guest-banner-slot">
+      <!-- #ifdef MP-WEIXIN -->
+      <van-notice-bar :wrapable="true" :scrollable="false" :text="guestBannerText" />
+      <!-- #endif -->
+      <!-- #ifndef MP-WEIXIN -->
+      <view class="guest-banner-tip"><text>{{ guestBannerText }}</text></view>
+      <!-- #endif -->
+    </view>
     <view class="chat-container page-with-nav__body">
     <scroll-view
       :scroll-top="scrollTop"
@@ -65,7 +73,8 @@ export default {
       sessionId: null, sceneAgentId: null, sessionTitle: '商业', sessionAgentStatus: 'active', sessionTopicClosed: false,
       messages: [], archivedTopicTips: [], archivedHasMore: false, archivedLoading: false,
       inputText: '', loading: false, scrollTop: 0,
-      mpKeyboardTabPage: true
+      mpKeyboardTabPage: true,
+      guestNeedLogin: false, guestSceneArchivedCount: 0, guestSceneTrialLimit: 2
     }
   },
   async onShow() { await this.ensureSceneSession(); if (this.sessionId) await this.bootstrap() },
@@ -86,6 +95,9 @@ export default {
       try {
         const res = await resolveSceneAgent('business')
         const d = (res && res.data) || {}
+        this.guestNeedLogin = !!d.guest_need_login
+        this.guestSceneArchivedCount = Number(d.guest_scene_archived_count) || 0
+        this.guestSceneTrialLimit = Number(d.guest_scene_trial_limit) || 2
         const ag = d.agent
         if (!ag || !ag.id) {
           this.sceneAgentId = null
@@ -97,8 +109,17 @@ export default {
         const sceneAgentId = ag.id
         this.sceneAgentId = sceneAgentId
         await this.loadArchivedInitial()
+        if (d.guest_need_login) {
+          this.sessionId = null
+          return
+        }
         if (d.session && d.session.id) { this.sessionId = d.session.id; return }
-        const created = await createChatSession(sceneAgentId); this.sessionId = created.data && created.data.id
+        try {
+          const created = await createChatSession(sceneAgentId)
+          this.sessionId = created.data && created.data.id
+        } catch (err) {
+          this.sessionId = null
+        }
       } catch (e) {
         this.sessionId = null
         this.sceneAgentId = null
@@ -258,7 +279,14 @@ export default {
         try { const sr = await sendChatMessageStream(this.sessionId, query, (full) => { if (this.messages[aiIndex]) this.messages[aiIndex].content = full; this.$nextTick(() => this.scrollToBottom()) }); if (this.messages[aiIndex] && !String(this.messages[aiIndex].content || '').trim()) this.messages[aiIndex].content = '（无内容）'; if (sr && sr.topicClosed) { uni.showToast({ title: '话题已结束', icon: 'none' }); await this.bootstrap(); await this.loadArchivedInitial() } }
         catch (e) { const msg = (e && e.message) || ''; if (msg === 'no stream' || msg === 'no chunked') await fallbackBlocking(); else throw e }
         if (this.messages[userIndex]) this.messages[userIndex].sendStatus = 'sent'
-      } catch (e) { const msg = (e && e.message) || ''; if (msg.includes('删除')) this.sessionAgentStatus = 'deleted'; else if (msg.includes('下架')) this.sessionAgentStatus = 'offline'; if (this.messages[userIndex]) this.messages[userIndex].sendStatus = 'failed'; if (this.messages[aiIndex]) this.messages[aiIndex].content = '发送失败，请稍后重试。' }
+      } catch (e) {
+        const msg = (e && e.message) || ''
+        if (msg.includes('删除')) this.sessionAgentStatus = 'deleted'
+        else if (msg.includes('下架')) this.sessionAgentStatus = 'offline'
+        if (this.messages[userIndex]) this.messages[userIndex].sendStatus = 'failed'
+        const failText = (msg && (msg.includes('免费体验') || msg.includes('登录'))) ? msg : '发送失败，请稍后重试。'
+        if (this.messages[aiIndex]) this.messages[aiIndex].content = failText
+      }
       finally { this.loading = false; this.$nextTick(() => this.scrollToBottom()) }
     },
     scrollToBottom() { this.scrollTop = this.scrollTop === 99999 ? 99998 : 99999 }
@@ -268,7 +296,16 @@ export default {
     showNoticeBar() { return (this.sessionTopicClosed && this.sessionAgentStatus === 'active') || this.isReadonlyStatus(this.sessionAgentStatus) },
     inputPlaceholder() { return (this.sessionTopicClosed && this.sessionAgentStatus === 'active') ? '开启新话题…' : '输入你的商业问题...' },
     isReadonlySession() { return this.isReadonlyStatus(this.sessionAgentStatus) },
-    readonlySessionTip() { if (this.sessionTopicClosed && this.sessionAgentStatus === 'active') return '本话题已结束。你可以继续输入并发送，开启新的话题。'; return this.readonlyMessage(this.sessionAgentStatus) }
+    readonlySessionTip() { if (this.sessionTopicClosed && this.sessionAgentStatus === 'active') return '本话题已结束。你可以继续输入并发送，开启新的话题。'; return this.readonlyMessage(this.sessionAgentStatus) },
+    guestBannerText() {
+      if (this.guestNeedLogin) {
+        return '本场景免费体验次数已用完。请点击底部「我的」Tab，进入登录页完成登录。'
+      }
+      if (this.$store.state.auth.userType === 'mp_guest' && this.guestSceneArchivedCount > 0) {
+        return `游客体验：商业场景已归档话题 ${this.guestSceneArchivedCount}/${this.guestSceneTrialLimit} 次（以话题结束归档为准），用尽后需打开「我的」登录。`
+      }
+      return ''
+    }
   }
 }
 </script>
@@ -283,6 +320,8 @@ page {
 <style lang="scss" scoped>
 @import '@/uni.scss';
 
+.guest-banner-slot { flex-shrink: 0; }
+.guest-banner-tip { padding: 16rpx 24rpx; background: #fff7e6; color: #ad6800; font-size: 26rpx; line-height: 1.45; }
 .chat-container { display: flex; flex-direction: column; flex: 1; min-height: 0; background: var(--t-root); }
 .msg-list { flex: 1; padding: $mp-gap-6 $mp-gap-7; overflow-y: auto; }
 .msg-item { display: flex; flex-direction: column; margin-bottom: $mp-gap-2; }

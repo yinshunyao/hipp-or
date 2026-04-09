@@ -6,6 +6,10 @@ export default {
   methods: {
     initApp() {
       this.$store.dispatch('app/InitConfig')
+      // 尽早换取游客 token，避免首屏切到「需求/商业」时 scene-agent 先于路由守卫完成而无 Authorization
+      // #ifdef MP-WEIXIN
+      this.$store.dispatch('auth/EnsureGuestToken').catch(() => {})
+      // #endif
     }
   }
 }

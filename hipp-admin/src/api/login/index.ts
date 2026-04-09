@@ -9,6 +9,7 @@ export const getRoleMenusApi = (): Promise<IResponse<AppCustomRouteRecordRaw[]>>
   return request.get({ url: '/auth/getMenuList' })
 }
 
-export const postSMSCodeApi = (params: any): Promise<IResponse> => {
-  return request.post({ url: '/vadmin/system/sms/send', params })
+/** 登录发码：与小程序共用 `POST /auth/sms/send`（JSON body），勿走 `/vadmin/system/sms/send`（该接口要求手机号已注册且历史为 query 传参） */
+export const postSMSCodeApi = (data: { telephone: string }): Promise<IResponse> => {
+  return request.post({ url: '/auth/sms/send', data })
 }

@@ -6,6 +6,18 @@ import { toast } from '@/common/utils/common'
 import store from '@/store'
 import request from '@/common/request/request.js'
 
+/** 后端 403 + 文案表示需重新登录时：清态跳转登录页，勿提示「拒绝访问」 */
+function is403ReloginMessage(msg) {
+  const s = (msg == null ? '' : String(msg)).trim()
+  if (!s) return false
+  return (
+    s.includes('重新登录') ||
+    s.includes('重新登陆') ||
+    s.includes('请先登录') ||
+    s.includes('请您先登录')
+  )
+}
+
 // luch-request插件官网：https://www.quanzhan.co/luch-request/guide/3.x/#%E5%85%A8%E5%B1%80%E8%AF%B7%E6%B1%82%E9%85%8D%E7%BD%AE
 // 创建luchRequest实例
 const http = new luchRequest({
@@ -54,9 +66,16 @@ http.interceptors.response.use(
       })
       toast('操作失败，请重试')
       return Promise.reject('error')
+    } else if (code === 403 && is403ReloginMessage(msg)) {
+      // 部分接口 CustomException 仅设 code=403、HTTP 仍为 200，走成功回调
+      store.dispatch('auth/LogOut')
+      return Promise.reject(new Error(msg))
     } else if (code !== 200) {
-      toast(msg)
-      return Promise.reject('error')
+      const skipToast = res.config && res.config.custom && res.config.custom.skipErrorToast
+      if (!skipToast) {
+        toast(msg)
+      }
+      return Promise.reject(new Error(msg))
     } else if (code === 200) {
       if (refresh === '1') {
         // 因token快过期，刷新token
@@ -83,9 +102,16 @@ http.interceptors.response.use(
         store.dispatch('auth/LogOut')
         message = '未认证，请登录'
         break
-      case 403:
-        message = '拒绝访问'
+      case 403: {
+        const serverMsg =
+          (error.data && (error.data.message || error.data.msg)) || message || error.errMsg || ''
+        if (is403ReloginMessage(serverMsg)) {
+          store.dispatch('auth/LogOut')
+          return Promise.reject(error)
+        }
+        message = serverMsg || '拒绝访问'
         break
+      }
       case 404:
         message = '请求地址出错'
         break

@@ -9,7 +9,7 @@ from __future__ import annotations
 # @desc           : 登录验证装饰器
 
 from fastapi import Request
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from application.settings import DEFAULT_AUTH_ERROR_MAX_NUMBER, DEMO, REDIS_DB_ENABLE
 from apps.vadmin.auth import crud, schemas
@@ -46,6 +46,26 @@ class WXLoginForm(BaseModel):
     avatar: str | None = None
     method: str = '2'  # 认证方式，0：密码登录，1：短信登录，2：微信一键登录
     platform: str = '1'  # 登录平台，0：PC端管理系统，1：移动端管理系统
+
+
+class MPGuestLoginForm(BaseModel):
+    """小程序 wx.login code，换取游客 JWT（无手机号）"""
+    code: str
+    platform: str = '1'
+    method: str = '4'  # 4：小程序游客
+
+
+class AuthSmsSendIn(BaseModel):
+    """小程序登录发码（不要求手机号已注册）"""
+
+    telephone: str
+
+    @field_validator("telephone", mode="before")
+    @classmethod
+    def normalize_phone(cls, v: str) -> str:
+        if v is None or (isinstance(v, str) and not str(v).strip()):
+            raise ValueError("请输入手机号")
+        return vali_telephone(str(v).strip())
 
 
 class LoginResult(BaseModel):
@@ -104,6 +124,7 @@ class LoginValidation:
                 await count.delete()
             self.result.msg = "OK"
             self.result.status = True
-            self.result.user = schemas.UserPasswordOut.model_validate(user)
             await crud.UserDal(db).update_login_info(user, request.client.host)
+            await db.refresh(user)
+            self.result.user = schemas.UserPasswordOut.model_validate(user)
         return self.result

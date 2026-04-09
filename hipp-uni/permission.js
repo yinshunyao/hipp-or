@@ -6,8 +6,8 @@ import { RouterMount, createRouter } from 'uni-simple-router'
 
 // 登录页面
 const loginPage = '/pages/login/login'
-// 默认进入需求页
-const indexPage = '/pages/requirement/index'
+// 默认进入首页（企业宣传）
+const indexPage = '/pages/home/index'
 
 const router = createRouter({
   platform: process.env.VUE_APP_PLATFORM,
@@ -20,34 +20,47 @@ const router = createRouter({
 })
 
 //全局路由前置守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   if (to.meta.loginAuth) {
-    // 如果跳转的路由需要登录权限，则验证该权限
     if (getToken()) {
       if (!store.state.auth.isUser) {
-        store.dispatch('auth/GetInfo')
+        try {
+          await store.dispatch('auth/GetInfo')
+        } catch (e) {}
       }
-      if (to.path === loginPage) {
+      // 游客持有 JWT，但须允许进入登录页绑定手机号；仅正式登录态才从登录页踢回首页
+      if (to.path === loginPage && store.state.auth.userType !== 'mp_guest') {
         next({
           path: indexPage,
           NAVTYPE: 'replaceAll'
         })
+        return
       }
       next()
-    } else {
-      next({
-        path: loginPage,
-        NAVTYPE: 'replaceAll'
-      })
+      return
     }
-  } else if (to.path === loginPage && getToken()) {
-    // 如果跳转路由为登录页面并且存在token，则跳转到首页
+    try {
+      await store.dispatch('auth/EnsureGuestToken')
+    } catch (e) {}
+    if (getToken()) {
+      if (!store.state.auth.isUser) {
+        try {
+          await store.dispatch('auth/GetInfo')
+        } catch (e) {}
+      }
+      next()
+      return
+    }
+    next({
+      path: loginPage,
+      NAVTYPE: 'replaceAll'
+    })
+  } else if (to.path === loginPage && getToken() && store.state.auth.userType !== 'mp_guest') {
     next({
       path: indexPage,
       NAVTYPE: 'replaceAll'
     })
   } else {
-    // 不需要权限，且不是登录页面则不进行验证
     next()
   }
 })

@@ -6,7 +6,7 @@ import random
 
 from datetime import datetime
 
-from sqlalchemy import Select, and_, exists, false, or_, select, true, update
+from sqlalchemy import Select, and_, exists, false, func, or_, select, true, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -36,6 +36,11 @@ from .dify_client import (
 AGENT_UNAVAILABLE_CODE = 46001
 TOPIC_CLOSED_CODE = 46002
 SCENE_AGENT_UNAVAILABLE_CODE = 46003
+MP_GUEST_TRIAL_EXHAUSTED_CODE = 46004
+# 访客在「需求分析」「商业评估」各自可完成的已归档话题上限（按 service_type 分别计数，非两场景合计）
+GUEST_SCENE_TRIAL_ARCHIVES_MAX = 2
+GUEST_QUOTA_SERVICE_TYPES = frozenset({"需求分析", "商业评估"})
+MP_GUEST_USER_TYPE = "mp_guest"
 
 
 def _session_update_ts(sess: models.VadminChatSession) -> float:
@@ -119,11 +124,34 @@ class ChatSessionDal(DalBase):
             raise CustomException("智能体不存在或未上架")
         return agent
 
+    async def _count_guest_scene_archived_sessions(self, user_id: int, service_type: str) -> int:
+        st = (service_type or "").strip()
+        if st not in GUEST_QUOTA_SERVICE_TYPES:
+            return 0
+        sql = (
+            select(func.count())
+            .select_from(self.model)
+            .join(
+                agent_models.VadminAgent,
+                self.model.agent_id == agent_models.VadminAgent.id,
+            )
+            .where(
+                self.model.user_id == user_id,
+                self.model.is_delete == false(),
+                self.model.session_kind == "dify",
+                self.model.is_topic_closed == true(),
+                agent_models.VadminAgent.service_type == st,
+            )
+        )
+        r = await self.db.execute(sql)
+        return int(r.scalar_one() or 0)
+
     async def resolve_scene_agent(
         self,
         *,
         user_id: int,
         scene: str,
+        user: VadminUser | None = None,
     ) -> schemas.SceneAgentOut:
         """
         场景页入口解析：按 scene 映射 service_type，从可服务智能体中挑选一个（同类型多候选时随机 1 个）。
@@ -171,10 +199,22 @@ class ChatSessionDal(DalBase):
         rr = await self.db.execute(open_sess_sql)
         open_sess = rr.scalar_one_or_none()
 
+        guest_scene_archived_count = 0
+        guest_need_login = False
+        guest_scene_trial_limit = GUEST_SCENE_TRIAL_ARCHIVES_MAX
+        if user and getattr(user, "user_type", "") == MP_GUEST_USER_TYPE:
+            guest_scene_archived_count = await self._count_guest_scene_archived_sessions(user_id, service_type)
+            guest_need_login = bool(
+                guest_scene_archived_count >= guest_scene_trial_limit and open_sess is None
+            )
+
         return schemas.SceneAgentOut(
             service_type=service_type,
             agent=schemas.AgentSnippetOut.model_validate(chosen),
             session=(schemas.SessionListOut.model_validate(open_sess) if open_sess else None),
+            guest_scene_archived_count=guest_scene_archived_count,
+            guest_scene_trial_limit=guest_scene_trial_limit,
+            guest_need_login=guest_need_login,
         )
 
     @staticmethod
@@ -228,6 +268,20 @@ class ChatSessionDal(DalBase):
             raise CustomException(
                 "本话题已结束，无法继续发送。请返回列表新建对话，或在会话列表长按该会话选择「继续对话」。",
                 code=TOPIC_CLOSED_CODE,
+            )
+
+    async def assert_mp_guest_scene_quota(self, user_id: int, agent: agent_models.VadminAgent) -> None:
+        u = await self.db.get(VadminUser, user_id)
+        if not u or getattr(u, "user_type", "") != MP_GUEST_USER_TYPE:
+            return
+        st = (agent.service_type or "").strip()
+        if st not in GUEST_QUOTA_SERVICE_TYPES:
+            return
+        n = await self._count_guest_scene_archived_sessions(user_id, st)
+        if n >= GUEST_SCENE_TRIAL_ARCHIVES_MAX:
+            raise CustomException(
+                "本场景免费体验次数已用完。请打开底部「我的」Tab，进入登录页完成登录后再继续使用。",
+                code=MP_GUEST_TRIAL_EXHAUSTED_CODE,
             )
 
     async def get_session_for_participant(self, session_id: int, user_id: int) -> models.VadminChatSession:
@@ -552,6 +606,16 @@ class ChatSessionDal(DalBase):
 
     async def create_session(self, user_id: int, agent_id: int) -> dict:
         ag = await self.get_published_agent(agent_id)
+        u = await self.db.get(VadminUser, user_id)
+        if u and getattr(u, "user_type", "") == MP_GUEST_USER_TYPE:
+            st = (ag.service_type or "").strip()
+            if st in GUEST_QUOTA_SERVICE_TYPES:
+                n = await self._count_guest_scene_archived_sessions(user_id, st)
+                if n >= GUEST_SCENE_TRIAL_ARCHIVES_MAX:
+                    raise CustomException(
+                        "本场景免费体验次数已用完。请打开底部「我的」Tab，进入登录页完成登录后再继续使用。",
+                        code=MP_GUEST_TRIAL_EXHAUSTED_CODE,
+                    )
         title = ag.name or f"智能体 #{ag.id}"
         obj = self.model(
             user_id=user_id,
@@ -569,6 +633,12 @@ class ChatSessionDal(DalBase):
         return await self.session_detail(obj.id, user_id)
 
     async def create_or_get_human_support_session(self, user_id: int, source_session_id: int) -> dict:
+        u0 = await self.db.get(VadminUser, user_id)
+        if u0 and getattr(u0, "user_type", "") == MP_GUEST_USER_TYPE:
+            raise CustomException(
+                "请先打开底部「我的」Tab 完成登录后再使用人工客服。",
+                code=MP_GUEST_TRIAL_EXHAUSTED_CODE,
+            )
         src = await self.get_data(
             source_session_id,
             v_where=[self.model.user_id == user_id, self.model.is_delete == false()],

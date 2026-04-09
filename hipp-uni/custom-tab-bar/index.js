@@ -24,6 +24,12 @@ Component({
     tabBarBorderColor: 'rgba(24, 59, 99, 0.08)',
     list: [
       {
+        path: "/pages/home/index",
+        text: "首页",
+        slotIcon: true,
+        slotIconName: "home-o"
+      },
+      {
         path: "/pages/chat/index",
         text: "话题",
         slotIcon: true,

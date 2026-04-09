@@ -1,7 +1,24 @@
 # 发布草稿（kinit）
 
+## 2026-04-09（hipp-or）
+
+- **需求变更 + 实现**：小程序去掉微信登录；默认改为手机号 + 短信验证码登录；验证码校验通过后若手机号不存在则自动创建账号。`POST /auth/sms/send` 发码（不要求已注册）；`POST /auth/login` 在 `platform=1` 且 `method=1` 时先验码再登录/建号。见 `hipp-uni/pages/login/login.vue`、`hipp-api/apps/vadmin/auth/utils/login.py`、`login_manage.py`、`crud.py`；设计见 `doc/01-or/【小程序登录】登录功能.md` 等。
+
+## 2026-04-08（hipp-or）
+
+- hipp-api：阿里云短信 **AccessKey、签名、模板** 改为从 `.env` 读取（`HIPP_SMS_*`），不再从系统设置 Redis 缓存 `aliyun_sms` 读取上述项；发送间隔与验证码有效期支持 `HIPP_SMS_SEND_INTERVAL` / `HIPP_SMS_VALID_TIME`。重置密码短信使用 `HIPP_SMS_TEMPLATE_CODE_RESET`（及可选 `HIPP_SMS_SIGN_NAME_RESET`）。见 `hipp-api/.env.example`、`application/settings.py`、`utils/sms/aliyun.py`。
+- hipp-uni：企业宣传**首页**页脚增加备案号展示 `备案号：蜀ICP备2026013590号-2X`。见 `hipp-uni/pages/home/index.vue`、`doc/01-or/【小程序】企业宣传首页与未登录体验咨询.md`。
+- hipp-uni：企业宣传**首页**右侧增加「需求咨询」悬浮气泡（固定于视口、滚动不消失），点击 `switchTab` 至需求页，与首页 CTA 行为一致。见 `hipp-uni/pages/home/index.vue`、`doc/02-dr/04 小程序对话/企业宣传首页与访客体验设计.md`。
+- hipp-admin / hipp-uni / hipp-api：**登录发码**统一走 `POST /auth/sms/send`（JSON body）；管理端登录页不再请求 `/vadmin/system/sms/send?telephone=`（该接口要求手机号已注册）。见 `hipp-admin/src/api/login/index.ts`、`hipp-uni/common/request/api/login.js`、`hipp-api/apps/vadmin/system/views.py`、`doc/91-qa/【登录发码】小程序误用管理端短信接口.md`。
+- hipp-uni（修复）：**游客态**点击「手机号登录」时被路由守卫误判为「已登录」而 `replace` 回首页；现仅非 `mp_guest` 且持有 token 时从登录页踢回首页。见 `hipp-uni/permission.js`、`doc/91-qa/【小程序】游客态点击手机号登录被踢回首页.md`。
+- hipp-uni（修复）：「我的」页在**游客态**（`user_type=mp_guest`）下不再展示「退出登录」按钮，与同页游客提示语义一致。见 `hipp-uni/pages/mine/index.vue`、`doc/91-qa/【小程序我的页】游客态仍显示退出登录.md`。
+- hipp-uni：HTTP 403 或业务 `code=403` 且文案为需重新登录时，统一走 `auth/LogOut` 跳转登录页，不再 Toast「拒绝访问」。见 `hipp-uni/common/request/request.js`。
+- hipp-api / hipp-uni：**访客体验配额按场景分别计数**——「需求分析」「商业评估」各自最多 2 次已归档话题（`is_topic_closed`），不再两场景合计 2 次；`scene-agent` 的 `guest_scene_archived_count` / `guest_need_login` 与 `46004` 校验均按当前 `service_type` 统计；首页与需求/商业页提示文案同步。见 `doc/01-or/【小程序】企业宣传首页与未登录体验咨询.md`、`doc/02-dr/04 小程序对话/企业宣传首页与访客体验设计.md`。
+- hipp-api / hipp-uni：**修复退出登录后从首页进入需求/商业咨询又恢复正式登录态**——`get_or_create_mp_guest` 不再对已绑定正式/微信用户（非 `mp_guest`）的 openid 签发游客 token；小程序游客换票请求对预期失败静默 Toast；`storage.clean()` 同步清空内存缓存。见 `doc/91-qa/【小程序】退出登录后进入需求商业咨询恢复登录态.md`。
+
 ## 2026-03-26（hipp-or）
 
+- hipp-uni / hipp-api：**企业首页与游客体验**——新增主包 `pages/home/index`（对标 `爱宝喜宝/luo/index.html` 信息架构与配色）；TabBar 首项「首页」；`POST /auth/mp/guest`（`wx.login` code）签发 `user_type=mp_guest`；需求/商业场景下按 `service_type` **分别**统计已归档会话，各场景 ≥2 次后在该场景禁止新建会话与发消息（`46004`），`scene-agent` 返回 `guest_need_login` 等字段；路由无 token 时先尝试游客登录。见 `doc/01-or/【小程序】企业宣传首页与未登录体验咨询.md`、`doc/02-dr/04 小程序对话/企业宣传首页与访客体验设计.md`。
 - hipp-uni（修复）：微信小程序键盘弹起时输入框被遮挡、顶栏消失——关闭 `textarea` 默认整页上推，改用「键盘高度占位 view」方案：在 `input-bar` 下方插入 `kb-spacer`（`height = keyboardHeight`），flex 布局自动收缩消息列表、上移输入条，顶栏与胶囊始终可见。三页（需求/商业/对话）统一接入 `mp-keyboard-offset` mixin。见 `doc/91-qa/【小程序对话】键盘弹起顶栏与菜单消失.md`。
 - hipp-api / hipp-uni：小程序对话流式新增 WebSocket（WSS）链路：后端增加 `WS /mp/chat/sessions/{id}/messages/ws`（token 鉴权、增量 `delta` / 完成 `done` / 错误 `error` 事件）；前端 `MP-WEIXIN` 分支改用 `uni.connectSocket` 实时渲染，连接失败自动回退 blocking 发送，保留现有非小程序发送逻辑。
 - hipp-uni：优化自定义底部 TabBar 真机视觉密度，统一下调栏高（`56px -> 50px`）、图标（`28px -> 24px`）与文案字号（`16px -> 13px`），并同步 `custom-tab-bar/theme.js` 与 `uni.scss` 设计令牌，改善「底栏过大不协调」观感。

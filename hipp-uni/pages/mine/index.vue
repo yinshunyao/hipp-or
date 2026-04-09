@@ -21,6 +21,10 @@
       </view>
       <text class="mine-greeting">{{ displayName }}</text>
     </view>
+    <view v-if="isGuest" class="guest-tip">
+      <text class="guest-tip-text">当前为游客体验身份，登录后可无限次使用需求与商业咨询等功能。</text>
+      <button class="guest-login-btn" hover-class="guest-login-btn--hover" @click="goLogin">手机号登录</button>
+    </view>
     <view class="content-section">
       <view class="menu-list">
         <view class="list-cell list-cell-arrow" @click="handleToEditInfo">
@@ -49,7 +53,7 @@
         </view>
       </view>
     </view>
-    <view class="logout-wrap">
+    <view v-if="!isGuest" class="logout-wrap">
       <button class="logout-btn" hover-class="logout-btn--hover" @click="handleLogout">
         <text class="logout-text">退出登录</text>
       </button>
@@ -76,9 +80,15 @@ export default {
       if (nickname && String(nickname).trim()) return nickname
       if (name && String(name).trim()) return name
       return '我的'
+    },
+    isGuest() {
+      return this.$store.state.auth.userType === 'mp_guest'
     }
   },
   methods: {
+    goLogin() {
+      uni.navigateTo({ url: '/pages/login/login' })
+    },
     handleToEditInfo() { this.$tab.navigateTo('/subpkg/mine/info/edit') },
     handleToPwd() { this.$tab.navigateTo('/subpkg/mine/pwd/index') },
     toggleTheme() { this.$store.dispatch('theme/toggle') },
@@ -126,6 +136,33 @@ page {
   margin-top: $mp-gap-6; font-size: $mp-font-title; font-weight: 600;
   color: var(--t-text-1); letter-spacing: $mp-account-greet-track;
 }
+.guest-tip {
+  margin: 0 30rpx 24rpx;
+  padding: 28rpx;
+  border-radius: 16rpx;
+  background: var(--t-elevated);
+  border: 2rpx solid var(--t-border);
+}
+.guest-tip-text {
+  display: block;
+  font-size: 28rpx;
+  color: var(--t-text-2);
+  line-height: 1.55;
+  margin-bottom: 20rpx;
+}
+.guest-login-btn {
+  width: 100%;
+  height: 88rpx;
+  line-height: 88rpx;
+  border-radius: 44rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--t-accent-text);
+  background: linear-gradient(135deg, var(--t-accent-from), var(--t-accent-to));
+  border: none;
+}
+.guest-login-btn::after { border: none; }
+.guest-login-btn--hover { opacity: 0.9; }
 .content-section { padding: 0; }
 .logout-wrap { padding: 36rpx 30rpx 0; }
 .menu-icon--van {

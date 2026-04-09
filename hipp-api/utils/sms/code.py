@@ -17,11 +17,9 @@ from core.exception import CustomException
 class CodeSMS(AliyunSMS):
 
     def __init__(self, telephone: str, rd: Redis):
-        super().__init__([telephone], rd)
+        super().__init__([telephone], rd, sms_profile="verification")
 
         self.telephone = telephone
-        self.sign_conf = "sms_sign_name_1"
-        self.template_code_conf = "sms_template_code_1"
 
     async def main_async(self) -> bool:
         """

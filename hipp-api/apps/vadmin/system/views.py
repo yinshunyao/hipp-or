@@ -136,7 +136,11 @@ async def upload_image_to_local(file: UploadFile, path: str = Form(...)):
 ###########################################################
 #    短信服务管理
 ###########################################################
-@app.post("/sms/send", summary="发送短信验证码（阿里云服务）")
+@app.post(
+    "/sms/send",
+    summary="发送短信验证码（阿里云服务）",
+    description="历史接口：query 传 telephone，且要求该手机号已在库中注册。登录场景请统一使用 `POST /auth/sms/send`（JSON body，不要求已注册）。",
+)
 async def sms_send(telephone: str, rd: Redis = Depends(redis_getter), auth: Auth = Depends(OpenAuth())):
     user = await vadmin_auth_crud.UserDal(auth.db).get_data(telephone=telephone, v_return_none=True)
     if not user:

@@ -30,7 +30,6 @@ from alibabacloud_tea_util import models as util_models
 from core.logger import logger
 import datetime
 from redis.asyncio.client import Redis
-from utils.cache import Cache
 from utils.db_getter import DBGetter
 
 
@@ -38,15 +37,13 @@ class AliyunSMS(DBGetter):
     # 返回错误码对应：
     doc = "https://help.aliyun.com/document_detail/101346.html"
 
-    def __init__(self, telephones: List[str], rd: Redis = None):
+    #: ``verification``：验证码短信；``reset``：重置密码通知短信
+    def __init__(self, telephones: List[str], rd: Redis = None, sms_profile: str = "verification"):
         super().__init__()
         self.check_telephones_format(telephones)
         self.telephones = telephones
         self.rd = rd
-
-        self.sign_conf = None  # 数据库中 sms_sign_name_* 的配置
-        self.template_code_conf = None  # 数据库中 sms_template_code_* 的配置
-        # 以上两个配置项的好处在于可以灵活配置短信信息，不需要改代码
+        self.sms_profile = sms_profile
 
     async def main_async(self, **kwargs) -> List[bool]:
         """
@@ -80,21 +77,43 @@ class AliyunSMS(DBGetter):
             print(e.__str__())
             return False
 
-    async def _get_settings_async(self, retry: int = 3):
+    def _load_sms_config_from_env(self) -> None:
+        """从 application.settings（.env）加载阿里云短信参数。"""
+        from application import settings as app_settings
+
+        self.access_key = app_settings.SMS_ACCESS_KEY
+        self.access_key_secret = app_settings.SMS_ACCESS_KEY_SECRET
+        self.send_interval = app_settings.SMS_SEND_INTERVAL
+        self.valid_time = app_settings.SMS_VALID_TIME
+        if self.sms_profile == "verification":
+            self.sign_name = app_settings.SMS_SIGN_NAME
+            self.template_code = app_settings.SMS_TEMPLATE_CODE
+        elif self.sms_profile == "reset":
+            self.sign_name = app_settings.SMS_SIGN_NAME_RESET or app_settings.SMS_SIGN_NAME
+            self.template_code = app_settings.SMS_TEMPLATE_CODE_RESET
+        else:
+            raise ValueError(f"未知短信配置类型 sms_profile={self.sms_profile!r}")
+        if not self.access_key or not self.access_key_secret:
+            raise CustomException(
+                msg="短信服务未配置：请在环境变量中设置 HIPP_SMS_ACCESS_KEY 与 HIPP_SMS_ACCESS_KEY_SECRET",
+                code=500,
+            )
+        if not self.sign_name or not self.template_code:
+            if self.sms_profile == "reset":
+                hint = (
+                    "HIPP_SMS_SIGN_NAME（或与 HIPP_SMS_SIGN_NAME_RESET）、HIPP_SMS_TEMPLATE_CODE_RESET"
+                )
+            else:
+                hint = "HIPP_SMS_SIGN_NAME、HIPP_SMS_TEMPLATE_CODE"
+            raise CustomException(msg=f"短信服务未配置：请在环境变量中设置 {hint}", code=500)
+
+    async def _get_settings_async(self) -> None:
         """
-        获取配置信息
+        获取配置信息（异步路径与同步路径均使用 .env）
         """
         if not self.rd:
             raise ValueError("缺少 redis 对象参数！")
-        elif not self.sign_conf or not self.template_code_conf:
-            raise ValueError("缺少短信签名信息和短信模板ID！")
-        aliyun_sms = await Cache(self.rd).get_tab_name("aliyun_sms", retry)
-        self.access_key = aliyun_sms.get("sms_access_key")
-        self.access_key_secret = aliyun_sms.get("sms_access_key_secret")
-        self.send_interval = int(aliyun_sms.get("sms_send_interval"))
-        self.valid_time = int(aliyun_sms.get("sms_valid_time"))
-        self.sign_name = aliyun_sms.get(self.sign_conf)
-        self.template_code = aliyun_sms.get(self.template_code_conf)
+        self._load_sms_config_from_env()
 
     def main(self, **kwargs) -> List[bool]:
         """
@@ -126,37 +145,11 @@ class AliyunSMS(DBGetter):
             print(e.__str__())
             return False
 
-    def _get_settings(self):
+    def _get_settings(self) -> None:
         """
-        同步方式获取配置信息
+        同步方式获取配置信息（与异步一致，来自 .env）
         """
-        if not self.sign_conf or not self.template_code_conf:
-            raise ValueError("缺少短信签名信息和短信模板ID！")
-        self.conn_mysql()
-        sql = f"""
-        SELECT
-            config_value 
-        FROM
-            `vadmin_system_settings` 
-        WHERE
-            config_key IN (
-                'sms_access_key',
-                'sms_access_key_secret',
-                'sms_send_interval',
-                'sms_valid_time',
-                '{self.sign_conf}',
-                '{self.template_code_conf}'
-            )
-        """
-        self.mysql_cursor.execute(sql)
-        result = self.mysql_cursor.fetchall()
-        self.close_mysql()
-        self.access_key = result[0][0]
-        self.access_key_secret = result[1][0]
-        self.send_interval = result[2][0]
-        self.valid_time = result[3][0]
-        self.sign_name = result[4][0]
-        self.template_code = result[5][0]
+        self._load_sms_config_from_env()
 
     def _get_template_param(self, **kwargs) -> str:
         """

@@ -29,6 +29,8 @@ DEMO = env_bool("HIPP_DEMO", True)
 """演示功能白名单"""
 DEMO_WHITE_LIST_PATH = [
     "/auth/login",
+    "/auth/sms/send",
+    "/auth/mp/guest",
     "/auth/token/refresh",
     "/auth/wx/login",
     "/vadmin/system/dict/types/details",
@@ -142,6 +144,16 @@ DEFAULT_PASSWORD = "0"
 # 微信小程序配置（优先读取 .env）
 WECHAT_APPID = env_str("WECHAT_APPID", "")
 WECHAT_KEY = env_str("WECHAT_KEY", "")
+# 阿里云短信（AccessKey、签名、模板均从 .env 读取，不再使用系统设置 Tab 中的对应项）
+SMS_ACCESS_KEY = env_str("HIPP_SMS_ACCESS_KEY", "")
+SMS_ACCESS_KEY_SECRET = env_str("HIPP_SMS_ACCESS_KEY_SECRET", "")
+SMS_SIGN_NAME = env_str("HIPP_SMS_SIGN_NAME", "")
+SMS_TEMPLATE_CODE = env_str("HIPP_SMS_TEMPLATE_CODE", "")
+# 重置密码短信：签名未设置时沿用 SMS_SIGN_NAME；模板须单独在控制台申请（变量一般为 password）
+SMS_SIGN_NAME_RESET = env_str("HIPP_SMS_SIGN_NAME_RESET", "")
+SMS_TEMPLATE_CODE_RESET = env_str("HIPP_SMS_TEMPLATE_CODE_RESET", "")
+SMS_SEND_INTERVAL = env_int("HIPP_SMS_SEND_INTERVAL", 60)
+SMS_VALID_TIME = env_int("HIPP_SMS_VALID_TIME", 300)
 # 默认头像
 DEFAULT_AVATAR = "https://vv-reserve.oss-cn-hangzhou.aliyuncs.com/avatar/2023-01-27/1674820804e81e7631.png"
 # 默认登陆时最大输入密码或验证码错误次数

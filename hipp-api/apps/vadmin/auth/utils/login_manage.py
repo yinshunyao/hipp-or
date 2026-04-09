@@ -7,11 +7,15 @@
 # @desc           : 简要说明
 
 from datetime import datetime, timedelta
+
 from fastapi import Request
-from application import settings
+from sqlalchemy.ext.asyncio import AsyncSession
 import jwt
-from apps.vadmin.auth import models
+from application import settings
+from application.settings import DEFAULT_AUTH_ERROR_MAX_NUMBER, DEMO, REDIS_DB_ENABLE
+from apps.vadmin.auth import crud, models, schemas
 from core.database import redis_getter
+from utils.count import Count
 from utils.sms.code import CodeSMS
 from .validation import LoginValidation, LoginForm, LoginResult
 
@@ -42,6 +46,51 @@ class LoginManage:
         if result:
             return LoginResult(status=True, msg="验证成功")
         return LoginResult(status=False, msg="验证码错误")
+
+    async def mp_sms_login_with_register(
+        self, data: LoginForm, db: AsyncSession, request: Request
+    ) -> LoginResult:
+        """
+        小程序（platform=1）短信登录：先校验验证码，通过后再查库；无用户则自动注册。
+        """
+        rd = redis_getter(request)
+        sms = CodeSMS(data.telephone, rd)
+        ok = await sms.check_sms_code(data.password)
+        if not ok:
+            user_existing = await crud.UserDal(db).get_user_for_login(data.telephone, "1")
+            if user_existing and REDIS_DB_ENABLE and not DEMO:
+                count = Count(redis_getter(request), f"{data.telephone}_sms_auth")
+                number = await count.add(ex=86400)
+                if number >= DEFAULT_AUTH_ERROR_MAX_NUMBER:
+                    await count.reset()
+                    user_existing.is_active = False
+                    await db.flush()
+            return LoginResult(status=False, msg="验证码错误")
+
+        dal = crud.UserDal(db)
+        user = await dal.get_data(telephone=data.telephone, v_return_none=True)
+        if not user:
+            user = await dal.create_user_for_mp_sms_register(data.telephone)
+
+        if getattr(user, "is_blocked", False):
+            return LoginResult(status=False, msg="此账号已被拉黑")
+        if not user.is_active:
+            return LoginResult(status=False, msg="此账号已被冻结！")
+        if not user.is_staff:
+            return LoginResult(status=False, msg="此账号无权限！")
+
+        if REDIS_DB_ENABLE and not DEMO:
+            count = Count(redis_getter(request), f"{data.telephone}_sms_auth")
+            await count.delete()
+
+        await dal.update_login_info(user, request.client.host)
+        # flush 后实例可能过期；异步 ORM 下 Pydantic 读列会触发隐式 lazy IO → MissingGreenlet
+        await db.refresh(user)
+        return LoginResult(
+            status=True,
+            msg="OK",
+            user=schemas.UserPasswordOut.model_validate(user),
+        )
 
     @staticmethod
     def create_token(payload: dict, expires: timedelta = None):

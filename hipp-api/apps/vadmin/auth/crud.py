@@ -33,12 +33,15 @@ from apps.vadmin.help import models as vadmin_help_models
 import copy
 from utils import status
 from utils.wx.oauth import WXOAuth
+import hashlib
+import secrets
 from datetime import datetime
 
 
 class UserDal(DalBase):
     USER_TYPE_SYSTEM = "system"
     USER_TYPE_WECHAT = "wechat"
+    USER_TYPE_MP_GUEST = "mp_guest"  # 小程序未绑定手机号的访客（wx.login code 换 token）
     import_headers = [
         {"label": "姓名", "field": "name", "required": True},
         {"label": "昵称", "field": "nickname", "required": False},
@@ -156,18 +159,20 @@ class UserDal(DalBase):
         if not user:
             name = self.build_wechat_profile_name(resolved_nickname, telephone)
             default_password = f"wx_{telephone}"
+            persisted_nickname = resolved_nickname or name
+            persisted_avatar = resolved_avatar or settings.DEFAULT_AVATAR
             user = self.model(
                 telephone=telephone,
                 name=name,
-                nickname=resolved_nickname or name,
-                avatar=resolved_avatar or settings.DEFAULT_AVATAR,
+                nickname=persisted_nickname,
+                avatar=persisted_avatar,
                 password=self.model.get_password_hash(default_password),
                 is_staff=True,
                 is_active=True,
                 is_system_created=False,
                 user_type=self.USER_TYPE_WECHAT,
-                wx_nickname=resolved_nickname,
-                wx_avatar=resolved_avatar,
+                wx_nickname=persisted_nickname,
+                wx_avatar=persisted_avatar,
             )
             await self.flush(user)
             return user
@@ -180,6 +185,68 @@ class UserDal(DalBase):
             user.wx_avatar = resolved_avatar
             user.avatar = resolved_avatar
         await self.db.flush()
+        return user
+
+    async def get_or_create_mp_guest(self, openid: str) -> models.VadminUser:
+        """
+        微信小程序游客：仅 ``user_type=mp_guest`` 的账号允许通过 ``/auth/mp/guest`` 换票。
+        若 openid 已关联正式用户（system / wechat 等），拒绝签发游客 token，避免客户端清除登录态后
+        再次 ``wx.login`` 静默恢复为已绑定账号。
+        """
+        oid = (openid or "").strip()
+        if not oid:
+            raise CustomException("无效凭据", code=status.HTTP_ERROR)
+        existing = await self.get_data(wx_server_openid=oid, v_return_none=True)
+        if existing:
+            if existing.user_type != self.USER_TYPE_MP_GUEST:
+                raise ValueError("此微信已绑定账号，请先登录")
+            return existing
+        for attempt in range(100):
+            raw = hashlib.sha256(f"{oid}:{attempt}".encode("utf-8")).hexdigest()
+            num = int(raw[:8], 16) % 100000000
+            telephone = f"199{num:08d}"
+            clash = await self.get_data(telephone=telephone, v_return_none=True)
+            if clash:
+                continue
+            pwd_plain = secrets.token_urlsafe(32)
+            user = self.model(
+                telephone=telephone,
+                name="游客",
+                nickname="游客",
+                password=self.model.get_password_hash(pwd_plain),
+                is_staff=True,
+                is_active=True,
+                is_system_created=True,
+                user_type=self.USER_TYPE_MP_GUEST,
+                wx_server_openid=oid,
+                is_wx_server_openid=True,
+                avatar=settings.DEFAULT_AVATAR,
+            )
+            await self.flush(user)
+            return user
+        raise CustomException("创建游客失败，请重试", code=status.HTTP_ERROR)
+
+    async def create_user_for_mp_sms_register(self, telephone: str) -> models.VadminUser:
+        """
+        小程序短信验证码登录：校验通过后若手机号不存在则创建用户（user_type=system）。
+        """
+        suffix = (telephone or "")[-4:] if len(telephone or "") >= 4 else (telephone or "0000")
+        name = f"用户{suffix}"
+        if len(name) > 50:
+            name = name[:50]
+        pwd_plain = secrets.token_urlsafe(24)
+        user = self.model(
+            telephone=telephone,
+            name=name,
+            nickname=name,
+            password=self.model.get_password_hash(pwd_plain),
+            is_staff=True,
+            is_active=True,
+            is_system_created=False,
+            user_type=self.USER_TYPE_SYSTEM,
+            avatar=settings.DEFAULT_AVATAR,
+        )
+        await self.flush(user)
         return user
 
     async def create_data(

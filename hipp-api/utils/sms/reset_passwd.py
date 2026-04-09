@@ -14,10 +14,7 @@ from .aliyun import AliyunSMS
 class ResetPasswordSMS(AliyunSMS):
 
     def __init__(self, telephones: List[str], rd: Redis = None):
-        super().__init__(telephones, rd)
-
-        self.sign_conf = "sms_sign_name_2"
-        self.template_code_conf = "sms_template_code_2"
+        super().__init__(telephones, rd, sms_profile="reset")
 
     async def main_async(self, password: str) -> List[bool]:
         """

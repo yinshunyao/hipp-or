@@ -21,42 +21,83 @@
     </view>
 
     <view class="form-card">
+      <view class="login-mode-row">
+        <view
+          class="login-mode-item"
+          :class="{ 'login-mode-item--active': loginMode === 'sms' }"
+          @click="setLoginMode('sms')"
+        >
+          短信登录
+        </view>
+        <view
+          class="login-mode-item"
+          :class="{ 'login-mode-item--active': loginMode === 'password' }"
+          @click="setLoginMode('password')"
+        >
+          账号密码
+        </view>
+      </view>
+
       <view class="field" :class="{ 'field--focus': phoneFocus }">
         <view class="iconfont icon-user field-icon"></view>
         <input
           v-model="loginForm.telephone"
           class="field-input"
-          type="text"
-          placeholder="手机号或账号"
+          type="number"
+          :placeholder="loginMode === 'sms' ? '手机号' : '手机号或账号'"
           :placeholder-style="'color:' + tc.text3"
-          maxlength="50"
+          maxlength="11"
           @focus="phoneFocus = true"
           @blur="phoneFocus = false"
         />
       </view>
-      <view class="field" :class="{ 'field--focus': pwdFocus }">
-        <view class="iconfont icon-password field-icon"></view>
-        <input
-          v-model="loginForm.password"
-          :password="!passwordVisible"
-          class="field-input"
-          placeholder="密码"
-          :placeholder-style="'color:' + tc.text3"
-          maxlength="20"
-          @focus="pwdFocus = true"
-          @blur="pwdFocus = false"
-        />
-        <view class="field-suffix" @click="togglePasswordVisible">
-          {{ passwordVisible ? '隐藏' : '显示' }}
+
+      <template v-if="loginMode === 'sms'">
+        <view class="field" :class="{ 'field--focus': codeFocus }">
+          <view class="iconfont icon-password field-icon"></view>
+          <input
+            v-model="smsCode"
+            class="field-input"
+            type="number"
+            placeholder="验证码"
+            :placeholder-style="'color:' + tc.text3"
+            maxlength="8"
+            @focus="codeFocus = true"
+            @blur="codeFocus = false"
+          />
+          <view
+            class="field-suffix field-suffix--btn"
+            :class="{ 'field-suffix--disabled': smsCooldown > 0 }"
+            @click="sendSmsCode"
+          >
+            {{ smsCooldown > 0 ? `${smsCooldown}s` : '获取验证码' }}
+          </view>
         </view>
-      </view>
+      </template>
+
+      <template v-else>
+        <view class="field" :class="{ 'field--focus': pwdFocus }">
+          <view class="iconfont icon-password field-icon"></view>
+          <input
+            v-model="loginForm.password"
+            :password="!passwordVisible"
+            class="field-input"
+            placeholder="密码"
+            :placeholder-style="'color:' + tc.text3"
+            maxlength="20"
+            @focus="pwdFocus = true"
+            @blur="pwdFocus = false"
+          />
+          <view class="field-suffix" @click="togglePasswordVisible">
+            {{ passwordVisible ? '隐藏' : '显示' }}
+          </view>
+        </view>
+      </template>
 
       <button class="login-btn" hover-class="login-btn--hover" @click="handleLogin">
         <text class="login-btn-text">登 录</text>
       </button>
-      <button class="wx-login-btn" @click="openWxAuthDialog">
-        微信授权登录
-      </button>
+      <view class="home-entry" @click="goHome">返回首页</view>
 
       <view class="agree-row">
         <zb-tooltip :visible.sync="tooltipVisible" content="请阅读并同意" placement="top" ref="tooltip">
@@ -74,74 +115,29 @@
         </view>
       </view>
     </view>
-
-    <view v-if="wxAuthDialogVisible" class="wx-auth-mask" @click="closeWxAuthDialog">
-      <view class="wx-auth-dialog" @click.stop>
-        <view class="wx-auth-title">微信授权登录</view>
-        <view class="wx-auth-table">
-          <view class="wx-auth-row">
-            <text class="wx-auth-label">头像</text>
-            <view class="wx-auth-value">
-              <button class="wx-avatar-btn" open-type="chooseAvatar" @chooseavatar="onChooseAvatar">
-                <image v-if="wxAuthForm.avatar" class="wx-avatar" :src="wxAuthForm.avatar" mode="aspectFill" />
-                <text v-else class="wx-auth-placeholder">点击选择</text>
-              </button>
-            </view>
-          </view>
-          <view class="wx-auth-row">
-            <text class="wx-auth-label">昵称</text>
-            <view class="wx-auth-value">
-              <input
-                v-model="wxAuthForm.nickname"
-                class="wx-auth-input"
-                type="nickname"
-                placeholder="请输入昵称"
-                :placeholder-style="'color:' + tc.text3"
-                maxlength="20"
-              />
-            </view>
-          </view>
-          <view class="wx-auth-row">
-            <text class="wx-auth-label">手机号</text>
-            <view class="wx-auth-value">
-              <text :class="wxAuthForm.phone ? 'wx-auth-phone' : 'wx-auth-placeholder'">
-                {{ wxAuthForm.phone || '授权前为空' }}
-              </text>
-            </view>
-          </view>
-        </view>
-        <view class="wx-auth-actions">
-          <button class="wx-auth-cancel" @click="closeWxAuthDialog">取消</button>
-          <button
-            class="wx-auth-confirm"
-            open-type="getPhoneNumber"
-            @getphonenumber="onWxGetPhoneNumber"
-          >
-            授权手机号并登录
-          </button>
-        </view>
-      </view>
-    </view>
     </view>
   </view>
 </template>
 
 <script>
-import { wxLoginMixins } from '@/common/mixins/auth.js'
 import { themeMixin } from '@/common/mixins/theme.js'
+import { sendLoginSms } from '@/common/request/api/login.js'
 
 export default {
-  mixins: [wxLoginMixins, themeMixin],
+  mixins: [themeMixin],
   data() {
     return {
+      loginMode: 'sms',
       loginForm: { telephone: '', password: '' },
+      smsCode: '',
+      smsCooldown: 0,
+      smsTimer: null,
       isAgrement: false,
       tooltipVisible: false,
       phoneFocus: false,
       pwdFocus: false,
-      passwordVisible: false,
-      wxAuthDialogVisible: false,
-      wxAuthForm: { avatar: '', nickname: '', phone: '' }
+      codeFocus: false,
+      passwordVisible: false
     }
   },
   computed: {
@@ -152,57 +148,103 @@ export default {
     agreement() { return this.$store.state.app.agreement },
     isResetPassword() { return this.$store.state.auth.isResetPassword }
   },
+  beforeDestroy() {
+    if (this.smsTimer) {
+      clearInterval(this.smsTimer)
+      this.smsTimer = null
+    }
+  },
   methods: {
+    setLoginMode(mode) {
+      this.loginMode = mode
+    },
     handlePrivacy() {
       this.$tab.navigateTo(`/subpkg/common/webview/index?title=隐私政策&url=${this.privacy}`)
     },
     handleUserAgrement() {
       this.$tab.navigateTo(`/subpkg/common/webview/index?title=用户协议&url=${this.agreement}`)
     },
-    async handleLogin() {
-      if (this.isAgrement) {
-        if (!this.loginForm.telephone) this.$modal.msgError('请输入您的手机号')
-        else if (!this.loginForm.password) this.$modal.msgError('请输入您的密码')
-        else { this.$modal.loading('正在登录中...'); this.pwdLogin() }
-      } else { this.tooltipVisible = true }
-    },
-    togglePasswordVisible() {
-      this.passwordVisible = !this.passwordVisible
-    },
-    openWxAuthDialog() {
+    sendSmsCode() {
       if (!this.isAgrement) {
         this.tooltipVisible = true
         return
       }
-      this.wxAuthDialogVisible = true
+      if (this.smsCooldown > 0) return
+      const phone = (this.loginForm.telephone || '').trim()
+      if (!phone) {
+        this.$modal.msgError('请输入手机号')
+        return
+      }
+      if (phone.length !== 11) {
+        this.$modal.msgError('请输入正确手机号')
+        return
+      }
+      this.smsCode = ''
+      this.$modal.loading('发送中...')
+      sendLoginSms(phone)
+        .then(() => {
+          this.$modal.closeLoading()
+          this.$modal.msgSuccess('验证码已发送')
+          this.smsCooldown = 60
+          if (this.smsTimer) clearInterval(this.smsTimer)
+          this.smsTimer = setInterval(() => {
+            this.smsCooldown -= 1
+            if (this.smsCooldown <= 0) {
+              clearInterval(this.smsTimer)
+              this.smsTimer = null
+            }
+          }, 1000)
+        })
+        .catch(() => {
+          this.$modal.closeLoading()
+        })
     },
-    closeWxAuthDialog() {
-      this.wxAuthDialogVisible = false
+    async handleLogin() {
+      if (!this.isAgrement) {
+        this.tooltipVisible = true
+        return
+      }
+      if (this.loginMode === 'sms') {
+        const phone = (this.loginForm.telephone || '').trim()
+        const code = (this.smsCode || '').trim()
+        if (!phone) this.$modal.msgError('请输入手机号')
+        else if (!code) this.$modal.msgError('请输入验证码')
+        else {
+          this.$modal.loading('正在登录中...')
+          this.$store.dispatch('auth/SmsLogin', { telephone: phone, code }).then(() => {
+            this.$modal.closeLoading()
+            this.loginSuccess()
+          }).catch(() => {
+            this.$modal.closeLoading()
+          })
+        }
+      } else if (!this.loginForm.telephone) {
+        this.$modal.msgError('请输入您的手机号或账号')
+      } else if (!this.loginForm.password) {
+        this.$modal.msgError('请输入您的密码')
+      } else {
+        this.$modal.loading('正在登录中...')
+        this.pwdLogin()
+      }
     },
-    onChooseAvatar(e) {
-      this.wxAuthForm.avatar = (e && e.detail && e.detail.avatarUrl) || ''
+    togglePasswordVisible() {
+      this.passwordVisible = !this.passwordVisible
     },
-    async pwdLogin() {
+    pwdLogin() {
       this.$store.dispatch('auth/Login', this.loginForm).then(() => {
-        this.$modal.closeLoading(); this.loginSuccess()
+        this.$modal.closeLoading()
+        this.loginSuccess()
+      }).catch(() => {
+        this.$modal.closeLoading()
       })
     },
     loginSuccess() {
-      this.$tab.reLaunch(this.isResetPassword ? '/pages/requirement/index' : '/subpkg/mine/pwd/index')
+      this.$tab.reLaunch(this.isResetPassword ? '/pages/home/index' : '/subpkg/mine/pwd/index')
     },
-    onWxGetPhoneNumber(detail) {
-      const profile = {
-        nickname: (this.wxAuthForm.nickname || '').trim(),
-        avatar: this.wxAuthForm.avatar || ''
-      }
-      this.onGetPhoneNumber(detail, profile).then((res) => {
-        const telephone = (res && res.data && res.data.telephone) || this.$store.state.auth.telephone || ''
-        this.wxAuthForm.phone = telephone
-        this.closeWxAuthDialog()
-        this.loginSuccess()
-      })
-    },
-    checkboxChange() { this.isAgrement = !this.isAgrement; this.tooltipVisible = false }
+    checkboxChange() { this.isAgrement = !this.isAgrement; this.tooltipVisible = false },
+    goHome() {
+      uni.switchTab({ url: '/pages/home/index' })
+    }
   }
 }
 </script>
@@ -253,6 +295,28 @@ page { background-color: var(--t-root, #{$t-page-root}); }
   color: var(--t-text-3); letter-spacing: $mp-auth-sub-track;
 }
 .form-card { margin: $mp-auth-form-mt $mp-auth-form-mx 0; position: relative; z-index: 1; }
+
+.login-mode-row {
+  display: flex;
+  margin-bottom: $mp-auth-row-mb;
+  border-radius: $mp-auth-row-r;
+  background: var(--t-surface);
+  border: $mp-border solid var(--t-border);
+  overflow: hidden;
+}
+.login-mode-item {
+  flex: 1;
+  text-align: center;
+  padding: 22rpx 0;
+  font-size: $mp-font-meta;
+  color: var(--t-text-3);
+}
+.login-mode-item--active {
+  color: var(--t-accent);
+  font-weight: 700;
+  background: var(--t-accent-bg);
+}
+
 .field {
   display: flex; align-items: center; height: $mp-auth-row-h; margin-bottom: $mp-auth-row-mb;
   background: var(--t-surface); border-radius: $mp-auth-row-r;
@@ -276,6 +340,15 @@ page { background-color: var(--t-root, #{$t-page-root}); }
   font-size: $mp-font-meta;
   color: var(--t-accent);
   padding-left: 16rpx;
+  flex-shrink: 0;
+}
+.field-suffix--btn {
+  min-width: 160rpx;
+  text-align: right;
+}
+.field-suffix--disabled {
+  color: var(--t-text-3);
+  pointer-events: none;
 }
 .login-btn {
   margin-top: $mp-auth-btn-mt; width: 100%; height: $mp-auth-row-h; border-radius: $mp-auth-row-r;
@@ -290,129 +363,14 @@ page { background-color: var(--t-root, #{$t-page-root}); }
   font-size: $mp-font-cta; font-weight: 700; color: var(--t-accent-text);
   letter-spacing: $mp-auth-btn-track;
 }
-.wx-login-btn {
-  margin-top: 20rpx;
-  width: 100%;
-  height: $mp-auth-row-h;
-  border-radius: $mp-auth-row-r;
-  border: $mp-border solid var(--t-border);
-  background: var(--t-surface);
-  color: var(--t-text-1);
-  font-size: $mp-font-input;
-  /* 与主登录按钮一致：原生 button 默认 padding/line-height 会导致文字偏上 */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  line-height: 1;
-  box-sizing: border-box;
-}
-.wx-login-btn::after { border: none; }
 
-.wx-auth-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 36rpx;
-}
-.wx-auth-dialog {
-  width: 100%;
-  background: var(--t-surface);
-  border-radius: 24rpx;
-  border: $mp-border solid var(--t-border);
-  padding: 28rpx;
-  box-sizing: border-box;
-}
-.wx-auth-title {
-  font-size: $mp-font-input;
-  color: var(--t-text-1);
-  font-weight: 700;
+.home-entry {
+  margin-top: 28rpx;
   text-align: center;
-  margin-bottom: 20rpx;
+  font-size: 28rpx;
+  color: var(--t-accent);
+  padding: 12rpx 0;
 }
-.wx-auth-table {
-  border: $mp-border solid var(--t-border);
-  border-radius: 16rpx;
-  overflow: hidden;
-}
-.wx-auth-row {
-  min-height: 86rpx;
-  display: flex;
-  align-items: center;
-  border-bottom: $mp-border solid var(--t-border);
-  padding: 0 18rpx;
-}
-.wx-auth-row:last-child { border-bottom: none; }
-.wx-auth-label {
-  width: 140rpx;
-  color: var(--t-text-2);
-  font-size: $mp-font-meta;
-}
-.wx-auth-value {
-  flex: 1;
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-}
-.wx-auth-placeholder {
-  color: var(--t-text-3);
-  font-size: $mp-font-meta;
-}
-.wx-avatar-btn {
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  line-height: 1;
-}
-.wx-avatar-btn::after { border: none; }
-.wx-avatar {
-  width: 56rpx;
-  height: 56rpx;
-  border-radius: 50%;
-}
-.wx-auth-input {
-  width: 260rpx;
-  text-align: right;
-  color: var(--t-text-1);
-  font-size: $mp-font-meta;
-}
-.wx-auth-phone {
-  color: var(--t-text-1);
-  font-size: $mp-font-meta;
-}
-.wx-auth-actions {
-  margin-top: 20rpx;
-  display: flex;
-  gap: 12rpx;
-}
-.wx-auth-cancel,
-.wx-auth-confirm {
-  flex: 1;
-  height: 78rpx;
-  border-radius: 12rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: $mp-font-meta;
-  padding: 0;
-}
-.wx-auth-cancel {
-  background: var(--t-root);
-  color: var(--t-text-2);
-  border: $mp-border solid var(--t-border);
-}
-.wx-auth-confirm {
-  background: linear-gradient(135deg, var(--t-accent-from), var(--t-accent-to));
-  color: var(--t-accent-text);
-  border: none;
-}
-.wx-auth-cancel::after,
-.wx-auth-confirm::after { border: none; }
 
 .agree-row { display: flex; align-items: flex-start; margin-top: $mp-auth-agree-mt; }
 .agree-text { flex: 1; font-size: $mp-font-legal; line-height: $mp-lh-legal; }

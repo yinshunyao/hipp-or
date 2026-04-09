@@ -30,6 +30,7 @@ const storage = {
   },
   clean: function () {
     uni.removeStorageSync(storageKey)
+    storageData = {}
   }
 }
 

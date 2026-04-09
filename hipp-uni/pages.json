@@ -8,6 +8,15 @@
 	},
 	"pages": [
 		{
+			"path": "pages/home/index",
+			"meta": {
+				"loginAuth": false
+			},
+			"style": {
+				"navigationBarTitleText": "首页"
+			}
+		},
+		{
 			"path": "pages/login/login",
 			"meta": {
 				"loginAuth": false
@@ -75,7 +84,7 @@
 				{
 					"path": "index",
 					"meta": {
-						"loginAuth": true
+						"loginAuth": false
 					},
 					"style": {
 						"navigationBarTitleText": "Kinit 移动端框架"
@@ -227,6 +236,10 @@
 		"borderStyle": "white",
 		"backgroundColor": "#FFFFFF",
 		"list": [
+			{
+				"pagePath": "pages/home/index",
+				"text": "首页"
+			},
 			{
 				"pagePath": "pages/chat/index",
 				"text": "话题"

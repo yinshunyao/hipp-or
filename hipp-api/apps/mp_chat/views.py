@@ -74,7 +74,7 @@ async def resolve_scene_agent(
     auth: Auth = Depends(AllUserAuth()),
 ):
     dal = crud.ChatSessionDal(auth.db)
-    data = await dal.resolve_scene_agent(user_id=auth.user.id, scene=scene)
+    data = await dal.resolve_scene_agent(user_id=auth.user.id, scene=scene, user=auth.user)
     return SuccessResponse(data.model_dump())
 
 
@@ -169,6 +169,7 @@ async def post_message(
         return SuccessResponse(result)
     agent = await dal_s.assert_session_agent_sendable(sess)
     dal_s.assert_session_topic_sendable(sess)
+    await dal_s.assert_mp_guest_scene_quota(auth.user.id, agent)
     dal_m = crud.ChatMessageDal(auth.db)
     result = await dal_m.send_user_and_bot(auth.db, sess, agent, auth.user.id, body.query)
     return SuccessResponse(result)
@@ -186,6 +187,7 @@ async def post_message_stream(
         raise HTTPException(status_code=422, detail="人工客服会话不支持流式发送，请使用同步接口")
     agent = await dal_s.assert_session_agent_sendable(sess)
     dal_s.assert_session_topic_sendable(sess)
+    await dal_s.assert_mp_guest_scene_quota(auth.user.id, agent)
     dal_m = crud.ChatMessageDal(auth.db)
     # 必须在 return 之前从 ORM 读出标量：流式 body 在路由返回后才执行，届时 sess/agent 可能已分离
     gen = dal_m.stream_user_and_bot(
@@ -237,6 +239,7 @@ async def post_message_stream_ws(websocket: WebSocket, session_id: int):
                 raise CustomException("人工客服会话不支持流式发送，请使用同步接口")
             agent = await dal_s.assert_session_agent_sendable(sess)
             dal_s.assert_session_topic_sendable(sess)
+            await dal_s.assert_mp_guest_scene_quota(user.id, agent)
             dal_m = crud.ChatMessageDal(db)
             full = ""
             topic_closed = False

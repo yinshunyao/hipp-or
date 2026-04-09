@@ -1,6 +1,6 @@
 import storage from '@/common/utils/storage'
 import { auth } from '@/common/utils/constant'
-import { getInfo, wxCodeLogin, login } from '@/common/request/api/login'
+import { getInfo, wxCodeLogin, login, mpGuestLogin } from '@/common/request/api/login'
 import {
   getToken,
   setToken,
@@ -86,12 +86,71 @@ const mutations = {
 }
 
 const actions = {
+  /**
+   * 微信小程序：无 token 时用 wx.login 换游客 JWT（仅 MP-WEIXIN 有效）
+   */
+  EnsureGuestToken({ commit }) {
+    return new Promise((resolve, reject) => {
+      if (getToken()) {
+        resolve({ data: {} })
+        return
+      }
+      // #ifdef MP-WEIXIN
+      uni.login({
+        provider: 'weixin',
+        success: (res) => {
+          const code = (res && res.code) || ''
+          if (!code) {
+            reject(new Error('no wx code'))
+            return
+          }
+          mpGuestLogin(code)
+            .then((r) => {
+              const payload = (r && r.data) || {}
+              setToken(`${payload.token_type} ${payload.access_token}`)
+              commit('SET_TOKEN', `${payload.token_type} ${payload.access_token}`)
+              commit('SET_REFRESH_TOKEN', payload.refresh_token)
+              commit('SET_USER_TYPE', payload.user_type || 'mp_guest')
+              resolve(r)
+            })
+            .catch((e) => reject(e))
+        },
+        fail: (e) => reject(e || new Error('wx.login fail'))
+      })
+      // #endif
+      // #ifndef MP-WEIXIN
+      reject(new Error('guest only in mp-weixin'))
+      // #endif
+    })
+  },
+
   // 手机号密码登录
   Login({ commit }, userInfo) {
     const telephone = userInfo.telephone.trim()
     const password = userInfo.password
     return new Promise((resolve, reject) => {
-      login(telephone, password)
+      login(telephone, password, '0')
+        .then((res) => {
+          setToken(`${res.data.token_type} ${res.data.access_token}`)
+          commit('SET_TOKEN', `${res.data.token_type} ${res.data.access_token}`)
+          commit('SET_REFRESH_TOKEN', res.data.refresh_token)
+          commit('SET_IS_USER_OPENID', res.data.is_wx_server_openid)
+          commit('SET_IS_RESET_PASSWORD', res.data.is_reset_password)
+          commit('SET_USER_TYPE', res.data.user_type || 'system')
+          resolve(res)
+        })
+        .catch((error) => {
+          reject(error)
+        })
+    })
+  },
+
+  // 手机号 + 短信验证码登录（新用户自动注册）
+  SmsLogin({ commit }, { telephone, code }) {
+    const t = (telephone || '').trim()
+    const c = (code || '').trim()
+    return new Promise((resolve, reject) => {
+      login(t, c, '1')
         .then((res) => {
           setToken(`${res.data.token_type} ${res.data.access_token}`)
           commit('SET_TOKEN', `${res.data.token_type} ${res.data.access_token}`)
@@ -139,8 +198,13 @@ const actions = {
               ? 'https://vv-reserve.oss-cn-hangzhou.aliyuncs.com/avatar/2023-01-27/1674820804e81e7631.png'
               : user.avatar
           const name = user == null || user.name == '' || user.name == null ? '' : user.name
-          commit('SET_ROLES', user.roles.map((item) => item.name) || ['ROLE_DEFAULT'])
-          commit('SET_PERMISSIONS', user.permissions)
+          const roleList =
+            user && Array.isArray(user.roles) && user.roles.length
+              ? user.roles.map((item) => item.name)
+              : ['ROLE_DEFAULT']
+          commit('SET_ROLES', roleList)
+          commit('SET_PERMISSIONS', (user && user.permissions) || [])
+          commit('SET_USER_TYPE', (user && user.user_type) || 'system')
           commit('SET_NAME', name)
           commit('SET_NICKNAME', user.nickname)
           commit('SET_GENDER', user.gender)

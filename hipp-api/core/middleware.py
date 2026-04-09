@@ -24,6 +24,19 @@ from apps.vadmin.record.crud import OperationRecordDal, OperationRecordSqlDal
 from core.database import mongo_getter, session_factory
 from utils import status
 
+
+def _demo_non_get_allowed(path: str) -> bool:
+    """
+    演示环境（DEMO=True）下允许的非 GET 请求路径。
+    除 DEMO_WHITE_LIST_PATH 外，放行 `/mp/chat/` 下接口（发消息、建会话等），否则小程序在演示模式无法联调。
+    """
+    if path in DEMO_WHITE_LIST_PATH:
+        return True
+    if path.startswith("/mp/chat/"):
+        return True
+    return False
+
+
 # 与 vadmin_record_operation.content_length String(32) 一致
 _MAX_CONTENT_LENGTH_STR = 32
 
@@ -158,7 +171,7 @@ def register_demo_env_middleware(app: FastAPI):
                     code=status.HTTP_403_FORBIDDEN,
                     msg="演示环境，禁止操作"
                 )
-            elif path not in DEMO_WHITE_LIST_PATH:
+            elif not _demo_non_get_allowed(path):
                 return ErrorResponse(msg="演示环境，禁止操作")
         return await call_next(request)
 

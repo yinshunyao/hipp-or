@@ -101,8 +101,12 @@ class ArchivedTopicsPageOut(BaseModel):
 class SceneAgentOut(BaseModel):
     """
     场景页入口解析后的智能体（按 service_type 过滤；同类型多候选时随机 1 个）。
+    guest_*：仅 mp_guest；归档次数按当前场景的 service_type（需求分析 / 商业评估）分别统计，非两场景合计。
     """
 
     service_type: str
     agent: AgentSnippetOut
     session: SessionListOut | None = None
+    guest_scene_archived_count: int = 0
+    guest_scene_trial_limit: int = 2
+    guest_need_login: bool = False
