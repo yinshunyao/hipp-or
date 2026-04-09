@@ -2,6 +2,7 @@
 
 ## 2026-04-09（hipp-or）
 
+- **修复（启动）**：`run.sh` 将 `No module named 'application.database_url'` 误判为「数据库未配置」的问题——现 `export PYTHONPATH` 包含项目根、内嵌 Python 强制 `HIPP_RUN_ROOT` 与脚本目录一致、区分导入错误与连接串缺失；新增 `application/__init__.py`。见 `doc/91-qa/【启动】run.sh误报数据库配置与application.database_url缺失.md`。
 - **需求变更 + 实现**：小程序去掉微信登录；默认改为手机号 + 短信验证码登录；验证码校验通过后若手机号不存在则自动创建账号。`POST /auth/sms/send` 发码（不要求已注册）；`POST /auth/login` 在 `platform=1` 且 `method=1` 时先验码再登录/建号。见 `hipp-uni/pages/login/login.vue`、`hipp-api/apps/vadmin/auth/utils/login.py`、`login_manage.py`、`crud.py`；设计见 `doc/01-or/【小程序登录】登录功能.md` 等。
 
 ## 2026-04-08（hipp-or）

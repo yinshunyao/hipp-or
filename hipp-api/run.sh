@@ -18,6 +18,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 export HIPP_RUN_ROOT="$ROOT"
+# 保证 python -c / 子进程能解析 application.*（避免仅依赖 cwd 或外部误设的 HIPP_RUN_ROOT）
+export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 
 VENV="$ROOT/.venv"
 HOST_ARCH="$(uname -m)"
@@ -146,14 +148,26 @@ ensure_asyncmy() {
 }
 
 require_database_url() {
-  python -c "
+  # 子进程强制与 run.sh 同根，避免 supervisor/systemd 等注入错误的 HIPP_RUN_ROOT
+  HIPP_RUN_ROOT="$ROOT" python -c "
 import os, sys
 from pathlib import Path
-root = Path(os.environ['HIPP_RUN_ROOT'])
+root = Path(os.environ['HIPP_RUN_ROOT']).resolve()
 os.chdir(root)
-sys.path.insert(0, str(root))
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
 try:
     from application.database_url import get_database_url_raw
+except ModuleNotFoundError as e:
+    print(
+        '[run.sh] 无法导入 application.database_url（',
+        e,
+        '）。请确认部署目录含完整源码（含 application/database_url.py），'
+        '进程工作目录与 run.sh 所在目录一致；勿只拷贝 run.sh。',
+        file=sys.stderr,
+    )
+    sys.exit(1)
+try:
     get_database_url_raw()
 except Exception as e:
     print('[run.sh] 数据库配置无效或未配置：', e, file=sys.stderr)
@@ -164,14 +178,15 @@ except Exception as e:
 
 # 退出码：0 核心表已存在；3 可连库但缺表（需 init）；其它 连接/配置失败
 check_core_tables_present() {
-  python <<'PY'
+  HIPP_RUN_ROOT="$ROOT" python <<'PY'
 import os
 import sys
 from pathlib import Path
 
-root = Path(os.environ["HIPP_RUN_ROOT"])
+root = Path(os.environ["HIPP_RUN_ROOT"]).resolve()
 os.chdir(root)
-sys.path.insert(0, str(root))
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
 
 try:
     from application.database_url import resolve_alembic_sync_url
