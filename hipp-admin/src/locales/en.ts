@@ -69,7 +69,11 @@ export default {
     noPermission: `Sorry, you don't have permission to access this page.`,
     pageError: 'Sorry, the page you visited does not exist.',
     networkError: 'Sorry, the server reported an error.',
-    returnToHome: 'Return to home'
+    returnToHome: 'Return to home',
+    noAccessTitle: 'Cannot access the admin console',
+    noAccessDesc:
+      'Common reasons: your account has no menu/role assigned, or the menu API failed to load. Ask an administrator to grant menu access, then try again.',
+    logoutToSwitch: 'Log out and switch account'
   },
   setting: {
     projectSetting: 'Project setting',

@@ -15,11 +15,19 @@ from apps.vadmin.auth.crud import UserDal
 from apps.vadmin.auth.models import VadminUser, VadminRole
 from core.exception import CustomException
 from utils import status
+from utils.manager_session import enforce_manager_online
 from .validation import AuthValidation
 from fastapi import Request, Depends
 from application import settings
+from application.settings import REDIS_DB_ENABLE
 from core.database import db_getter
 from .validation.auth import Auth
+
+
+def _redis_or_none(request: Request):
+    if not REDIS_DB_ENABLE:
+        return None
+    return getattr(request.app.state, "redis", None)
 
 
 class OpenAuth(AuthValidation):
@@ -43,7 +51,9 @@ class OpenAuth(AuthValidation):
         try:
             telephone, password = self.validate_token(request, token)
             user = await UserDal(db).get_data(telephone=telephone, password=password, v_return_none=True)
-            return await self.validate_user(request, user, db, is_all=True)
+            auth = await self.validate_user(request, user, db, is_all=True)
+            await enforce_manager_online(_redis_or_none(request), user)
+            return auth
         except CustomException:
             return Auth(db=db)
 
@@ -68,7 +78,9 @@ class AllUserAuth(AuthValidation):
             return Auth(db=db)
         telephone, password = self.validate_token(request, token)
         user = await UserDal(db).get_data(telephone=telephone, password=password, v_return_none=True)
-        return await self.validate_user(request, user, db, is_all=True)
+        auth = await self.validate_user(request, user, db, is_all=True)
+        await enforce_manager_online(_redis_or_none(request), user)
+        return auth
 
 
 class FullAdminAuth(AuthValidation):
@@ -110,6 +122,7 @@ class FullAdminAuth(AuthValidation):
             is_staff=True
         )
         result = await self.validate_user(request, user, db, is_all=False)
+        await enforce_manager_online(_redis_or_none(request), user)
         permissions = self.get_user_permissions(user)
         if permissions != {'*.*.*'} and self.permissions:
             if not (self.permissions & permissions):

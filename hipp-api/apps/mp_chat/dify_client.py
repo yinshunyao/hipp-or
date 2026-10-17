@@ -91,6 +91,7 @@ class DifyStreamAccumulator:
         self.full_answer: str = ""
         self.conversation_id: str | None = None
         self.error: str | None = None
+        self.total_tokens: int = 0
 
     def feed_line(self, line: str) -> None:
         s = line.strip("\r")
@@ -114,7 +115,7 @@ class DifyStreamAccumulator:
             if isinstance(ans, str) and ans:
                 self.full_answer += ans
         elif ev == "message_end":
-            pass
+            self.total_tokens = usage_total_tokens(obj) or self.total_tokens
         elif ev == "error":
             msg = obj.get("message")
             self.error = str(msg) if msg is not None else "Dify 流式错误"
@@ -151,6 +152,86 @@ def rewrite_sse_answer_line(line: str, answer_filter: StreamAnswerPrefixFilter) 
         return None
     obj["answer"] = filtered
     return f"data: {json.dumps(obj, ensure_ascii=False)}"
+
+
+_THINK_RE = re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE)
+
+
+def usage_total_tokens(data: dict | None) -> int:
+    """从 Dify 消息的 metadata.usage 取出本轮 total_tokens。"""
+    if not isinstance(data, dict):
+        return 0
+    meta = data.get("metadata")
+    usage = meta.get("usage") if isinstance(meta, dict) else None
+    if not isinstance(usage, dict):
+        return 0
+    try:
+        return max(int(usage.get("total_tokens") or 0), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def clean_model_title(text: str) -> str:
+    """去掉思考段和装饰，只留一行标题。"""
+    raw = _THINK_RE.sub("", text or "")
+    line = ""
+    for row in raw.splitlines():
+        row = row.strip().strip("\"'「」《》#*`").strip()
+        row = re.sub(r"^(标题|题目)\s*[:：]\s*", "", row)
+        if row:
+            line = row
+            break
+    line = re.sub(r"\s+", " ", line).strip()
+    if len(line) > 24:
+        line = line[:24].rstrip()
+    return line
+
+
+async def summarize_session_title(
+    api_server: str,
+    app_key: str,
+    dify_user: str,
+    user_query: str,
+    answer: str = "",
+) -> str | None:
+    """
+    另开一次短请求，让模型概括会话标题。不写入用户当前的 Dify 会话。
+    """
+    query = (user_query or "").strip()
+    if not query:
+        return None
+    prompt = (
+        "请为下面这段咨询起一个标题。只输出标题本身，8到18个字，概括用户要办的事。"
+        "不要照抄原文开头，不要井号，不要解释。\n\n"
+        f"用户：{query[:1200]}\n"
+    )
+    reply = (answer or "").strip()
+    if reply:
+        prompt += f"助手：{reply[:500]}\n"
+    url = _chat_messages_url(api_server)
+    headers = {
+        "Authorization": f"Bearer {app_key}",
+        "Content-Type": "application/json",
+    }
+    body = {
+        "inputs": {},
+        "query": prompt,
+        "user": dify_user,
+        "response_mode": "blocking",
+    }
+    timeout = httpx.Timeout(connect=15.0, read=40.0, write=20.0, pool=15.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, headers=headers, json=body)
+            if resp.status_code >= 400:
+                return None
+            data = resp.json()
+    except (httpx.RequestError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    title = clean_model_title(str(data.get("answer") or ""))
+    return title or None
 
 
 def _api_v1_base(api_server: str) -> str:
@@ -266,12 +347,148 @@ async def fetch_dify_conversation_name(
     return None
 
 
+async def generate_dify_conversation_name(
+    api_server: str,
+    app_key: str,
+    conversation_id: str,
+    dify_user: str,
+) -> str | None:
+    """
+    POST /v1/conversations/{id}/name，auto_generate=true。
+    失败时返回 None，由业务层用首条用户问题收成短标题。
+    """
+    if not (conversation_id or "").strip():
+        return None
+    url = f"{_api_v1_base(api_server)}/conversations/{conversation_id}/name"
+    headers = {
+        "Authorization": f"Bearer {app_key}",
+        "Content-Type": "application/json",
+    }
+    body = {"name": "", "auto_generate": True, "user": dify_user}
+    timeout = httpx.Timeout(15.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            try:
+                resp = await client.post(url, headers=headers, json=body)
+            except httpx.RequestError:
+                return None
+            if resp.status_code >= 400:
+                return None
+            try:
+                payload = resp.json()
+            except ValueError:
+                return None
+            if not isinstance(payload, dict):
+                return None
+            name = payload.get("name")
+            if isinstance(name, str) and name.strip():
+                return name.strip()[:255]
+    except Exception:
+        return None
+    return None
+
+
+async def upload_file_to_dify(
+    api_server: str,
+    app_key: str,
+    dify_user: str,
+    *,
+    filename: str,
+    content: bytes,
+    content_type: str | None = None,
+) -> str:
+    """POST /v1/files/upload，返回 upload_file_id。"""
+    url = f"{_api_v1_base(api_server)}/files/upload"
+    headers = {"Authorization": f"Bearer {app_key}"}
+    mime = (content_type or "application/octet-stream").strip() or "application/octet-stream"
+    files = {"file": (filename or "file", content, mime)}
+    data = {"user": dify_user}
+    timeout = httpx.Timeout(connect=30.0, read=120.0, write=120.0, pool=30.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            resp = await client.post(url, headers=headers, files=files, data=data)
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            text = e.response.text[:500] if e.response is not None else ""
+            raise CustomException(f"Dify 上传文件失败: HTTP {e.response.status_code} {text}")
+        except httpx.RequestError as e:
+            raise CustomException(f"无法连接 Dify: {e!s}")
+    try:
+        payload = resp.json()
+    except ValueError:
+        raise CustomException("Dify 上传返回非 JSON")
+    if not isinstance(payload, dict):
+        raise CustomException("Dify 上传返回无效")
+    file_id = payload.get("id")
+    if not file_id:
+        raise CustomException("Dify 未返回文件 id")
+    return str(file_id)
+
+
+async def audio_to_text(
+    api_server: str,
+    app_key: str,
+    dify_user: str,
+    *,
+    filename: str,
+    content: bytes,
+    content_type: str | None = None,
+) -> str:
+    """POST /v1/audio-to-text，返回转写文本。"""
+    url = f"{_api_v1_base(api_server)}/audio-to-text"
+    headers = {"Authorization": f"Bearer {app_key}"}
+    mime = (content_type or "audio/webm").strip() or "audio/webm"
+    files = {"file": (filename or "audio.webm", content, mime)}
+    data = {"user": dify_user}
+    timeout = httpx.Timeout(connect=30.0, read=120.0, write=120.0, pool=30.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            resp = await client.post(url, headers=headers, files=files, data=data)
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            text = e.response.text[:500] if e.response is not None else ""
+            raise CustomException(f"语音转写失败: HTTP {e.response.status_code} {text}")
+        except httpx.RequestError as e:
+            raise CustomException(f"无法连接 Dify: {e!s}")
+    try:
+        payload = resp.json()
+    except ValueError:
+        raise CustomException("语音转写返回非 JSON")
+    if not isinstance(payload, dict):
+        raise CustomException("语音转写返回无效")
+    text = payload.get("text")
+    if not isinstance(text, str) or not text.strip():
+        raise CustomException("未识别到语音内容")
+    return text.strip()
+
+
+def _chat_body(
+    query: str,
+    dify_user: str,
+    response_mode: str,
+    conversation_id: str | None = None,
+    files: list[dict] | None = None,
+) -> dict:
+    body: dict = {
+        "inputs": {},
+        "query": query,
+        "user": dify_user,
+        "response_mode": response_mode,
+    }
+    if conversation_id:
+        body["conversation_id"] = conversation_id
+    if files:
+        body["files"] = files
+    return body
+
+
 async def iter_dify_chat_stream(
     api_server: str,
     app_key: str,
     query: str,
     dify_user: str,
     conversation_id: str | None = None,
+    files: list[dict] | None = None,
 ) -> AsyncIterator[str]:
     """
     POST {api_server}/v1/chat-messages，response_mode=streaming。
@@ -282,16 +499,9 @@ async def iter_dify_chat_stream(
         "Authorization": f"Bearer {app_key}",
         "Content-Type": "application/json",
     }
-    body: dict = {
-        "inputs": {},
-        "query": query,
-        "user": dify_user,
-        "response_mode": "streaming",
-    }
-    if conversation_id:
-        body["conversation_id"] = conversation_id
+    body = _chat_body(query, dify_user, "streaming", conversation_id, files)
 
-    timeout = httpx.Timeout(120.0)
+    timeout = httpx.Timeout(connect=30.0, read=900.0, write=60.0, pool=30.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
         try:
             async with client.stream("POST", url, headers=headers, json=body) as resp:
@@ -313,6 +523,7 @@ async def send_chat_message_blocking(
     query: str,
     dify_user: str,
     conversation_id: str | None = None,
+    files: list[dict] | None = None,
 ) -> dict:
     """
     POST {api_server}/v1/chat-messages
@@ -323,16 +534,9 @@ async def send_chat_message_blocking(
         "Authorization": f"Bearer {app_key}",
         "Content-Type": "application/json",
     }
-    body: dict = {
-        "inputs": {},
-        "query": query,
-        "user": dify_user,
-        "response_mode": "blocking",
-    }
-    if conversation_id:
-        body["conversation_id"] = conversation_id
+    body = _chat_body(query, dify_user, "blocking", conversation_id, files)
 
-    timeout = httpx.Timeout(120.0)
+    timeout = httpx.Timeout(connect=30.0, read=900.0, write=60.0, pool=30.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
         try:
             resp = await client.post(url, headers=headers, json=body)

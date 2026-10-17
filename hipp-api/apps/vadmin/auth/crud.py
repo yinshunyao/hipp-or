@@ -33,6 +33,7 @@ from apps.vadmin.help import models as vadmin_help_models
 import copy
 from utils import status
 from utils.wx.oauth import WXOAuth
+from apps.vadmin.auth.utils.password_flags import user_must_set_password_without_old
 import hashlib
 import secrets
 from datetime import datetime
@@ -42,6 +43,7 @@ class UserDal(DalBase):
     USER_TYPE_SYSTEM = "system"
     USER_TYPE_WECHAT = "wechat"
     USER_TYPE_MP_GUEST = "mp_guest"  # 小程序未绑定手机号的访客（wx.login code 换 token）
+    USER_TYPE_ENTITLEMENT = "entitlement"  # 电商短链次卡临时用户
     import_headers = [
         {"label": "姓名", "field": "name", "required": True},
         {"label": "昵称", "field": "nickname", "required": False},
@@ -245,6 +247,7 @@ class UserDal(DalBase):
             is_system_created=False,
             user_type=self.USER_TYPE_SYSTEM,
             avatar=settings.DEFAULT_AVATAR,
+            must_set_password_without_old=True,
         )
         await self.flush(user)
         return user
@@ -331,15 +334,23 @@ class UserDal(DalBase):
         :param data:
         :return:
         """
-        if not self.model.verify_password(data.old_password, user.password):
-            raise CustomException(msg="当前密码错误", code=400)
         if data.password != data.password_two:
             raise CustomException(msg="两次密码不一致", code=400)
         result = test_password(data.password)
         if isinstance(result, str):
             raise CustomException(msg=result, code=400)
+        skip_old = user_must_set_password_without_old(user)
+        if skip_old:
+            pass
+        else:
+            old = (data.old_password or "").strip()
+            if not old:
+                raise CustomException(msg="当前密码不能为空", code=400)
+            if not self.model.verify_password(old, user.password):
+                raise CustomException(msg="当前密码错误", code=400)
         user.password = self.model.get_password_hash(data.password)
         user.is_reset_password = True
+        user.must_set_password_without_old = False
         await self.flush(user)
 
     async def update_current_info(self, user: models.VadminUser, data: schemas.UserUpdateBaseInfo) -> Any:
@@ -490,6 +501,7 @@ class UserDal(DalBase):
             password = user.telephone[5:12] if settings.DEFAULT_PASSWORD == "0" else settings.DEFAULT_PASSWORD
             user.password = self.model.get_password_hash(password)
             user.is_reset_password = False
+            user.must_set_password_without_old = False
             self.db.add(user)
             data["reset_password_status"] = True
             data["password"] = password

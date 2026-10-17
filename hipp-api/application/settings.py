@@ -29,6 +29,7 @@ DEMO = env_bool("HIPP_DEMO", True)
 """演示功能白名单"""
 DEMO_WHITE_LIST_PATH = [
     "/auth/login",
+    "/auth/sso",
     "/auth/sms/send",
     "/auth/mp/guest",
     "/auth/token/refresh",
@@ -126,11 +127,31 @@ ALLOW_METHODS = ["*"]
 ALLOW_HEADERS = ["*"]
 
 """
+其他项目配置（部分须在 EVENTS 之前，供开关引用）
+"""
+# 用户侧身份（短信/密码）迁移至 hipp-manager；配置后 platform=1 登录走 manager
+HIPP_MANAGER_BASE = env_str("HIPP_MANAGER_BASE", "").rstrip("/")
+# S2S 扣款/入账，须与 manager 的 MANAGER_S2S_KEY 一致
+HIPP_MANAGER_KEY = env_str("HIPP_MANAGER_KEY", "")
+# 电商短链对外前缀（无尾斜杠），如 https://hipp.site/or/a
+OR_ACCESS_BASE = env_str("HIPP_OR_ACCESS_BASE", "").rstrip("/")
+# 小红书开放平台（密钥勿提交仓库）
+XHS_APP_KEY = env_str("HIPP_XHS_APP_KEY", "")
+XHS_APP_SECRET = env_str("HIPP_XHS_APP_SECRET", "")
+XHS_SKIP_SIGN = env_bool("HIPP_XHS_SKIP_SIGN", False)
+XHS_DELIVER_URL = env_str("HIPP_XHS_DELIVER_URL", "").rstrip("/")
+# 对话媒体孤儿 GC：每日 Asia/Shanghai 整点触发（默认 3 点）；宽限期小时；HIPP_OR_MEDIA_GC=0 关闭
+MEDIA_ORPHAN_GC_ENABLE = env_bool("HIPP_OR_MEDIA_GC", True)
+MEDIA_ORPHAN_GC_HOUR = env_int("HIPP_OR_MEDIA_GC_HOUR", 3)
+MEDIA_ORPHAN_GC_MIN_AGE_HOURS = env_int("HIPP_OR_MEDIA_GC_MIN_AGE_HOURS", 24)
+
+"""
 全局事件配置
 """
 EVENTS = [
     "core.event.connect_mongo" if MONGO_DB_ENABLE else None,
     "core.event.connect_redis" if REDIS_DB_ENABLE else None,
+    "core.event.start_media_orphan_gc" if MEDIA_ORPHAN_GC_ENABLE else None,
 ]
 
 """

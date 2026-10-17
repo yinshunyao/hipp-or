@@ -68,7 +68,11 @@ export default {
     noPermission: `抱歉，您无权访问此页面。`,
     pageError: '抱歉，您访问的页面不存在。',
     networkError: '抱歉，服务器报告错误。',
-    returnToHome: '返回首页'
+    returnToHome: '返回首页',
+    noAccessTitle: '暂无法进入管理后台',
+    noAccessDesc:
+      '常见原因：当前账号未分配后台菜单/角色，或菜单数据加载失败。请联系管理员在「角色与权限」中为您分配可访问菜单后再试。',
+    logoutToSwitch: '退出并更换账号'
   },
   setting: {
     projectSetting: '项目配置',

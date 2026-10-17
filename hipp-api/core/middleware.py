@@ -29,10 +29,13 @@ def _demo_non_get_allowed(path: str) -> bool:
     """
     演示环境（DEMO=True）下允许的非 GET 请求路径。
     除 DEMO_WHITE_LIST_PATH 外，放行 `/mp/chat/` 下接口（发消息、建会话等），否则小程序在演示模式无法联调。
+    电商短链核销与渠道回调同样放行。
     """
     if path in DEMO_WHITE_LIST_PATH:
         return True
     if path.startswith("/mp/chat/"):
+        return True
+    if path.startswith("/commerce/access/") or path.startswith("/commerce/channels/"):
         return True
     return False
 

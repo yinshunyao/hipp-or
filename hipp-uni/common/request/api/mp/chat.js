@@ -75,8 +75,38 @@ export function getChatMessages(sessionId, page, limit) {
 }
 
 /** 发送消息（blocking） */
-export function sendChatMessage(sessionId, query) {
-  return request.post(`/mp/chat/sessions/${sessionId}/messages`, { query })
+export function sendChatMessage(sessionId, query, files) {
+  const body = { query: query || '' }
+  if (files && files.length) body.files = files
+  return request.post(`/mp/chat/sessions/${sessionId}/messages`, body)
+}
+
+/** 删除未发送的对话附件（平台媒体） */
+export function deleteChatUpload(url) {
+  return request.delete('/mp/chat/upload', {
+    data: { url },
+    custom: { skipErrorToast: true }
+  })
+}
+
+/** 上传对话附件 */
+export function uploadChatFile(filePath, sessionId) {
+  const formData = {}
+  if (sessionId != null) formData.session_id = String(sessionId)
+  return request.upload('/mp/chat/upload', {
+    filePath,
+    name: 'file',
+    formData
+  })
+}
+
+/** 语音转文字 */
+export function audioToText(filePath, sessionId) {
+  return request.upload('/mp/chat/audio-to-text', {
+    filePath,
+    name: 'file',
+    formData: { session_id: String(sessionId) }
+  })
 }
 
 /**
@@ -140,9 +170,10 @@ export function createDifySseTextAccumulator() {
  * @param {number} sessionId
  * @param {string} query
  * @param {(fullText: string) => void} onDelta
+ * @param {Array=} files
  * @returns {Promise<{ topicClosed: boolean }>}
  */
-export function sendChatMessageStream(sessionId, query, onDelta) {
+export function sendChatMessageStream(sessionId, query, onDelta, files) {
   // #ifdef MP-WEIXIN
   return new Promise((resolve, reject) => {
     if (typeof uni === 'undefined' || typeof uni.connectSocket !== 'function') {
@@ -215,7 +246,10 @@ export function sendChatMessageStream(sessionId, query, onDelta) {
       return false
     }
 
-    const queryPayload = JSON.stringify({ query })
+    const queryPayload = JSON.stringify({
+      query: query || '',
+      ...(files && files.length ? { files } : {})
+    })
 
     const doSend = () => {
       if (done || sent) return

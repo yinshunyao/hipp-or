@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class AgentSnippetOut(BaseModel):
@@ -32,12 +32,22 @@ class SessionListOut(BaseModel):
     last_message_preview: Optional[str] = None
     is_pinned: bool = False
     is_topic_closed: bool = False
+    is_archived: bool = False
+    is_shared: bool = False
+    share_token: Optional[str] = Field(default=None, exclude=True)
+    token_usage: int = 0
     update_datetime: Optional[datetime] = None
     assigned_human_user_id: Optional[int] = None
     assigned_human_name: Optional[str] = None
     source_archive_session_id: Optional[int] = None
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def mark_shared(self):
+        if self.share_token:
+            self.is_shared = True
+        return self
 
 
 class SessionDetailOut(SessionListOut):
@@ -68,11 +78,40 @@ class CreateHumanSupportSessionIn(BaseModel):
 class PatchSessionIn(BaseModel):
     title: Optional[str] = Field(None, max_length=255)
     is_pinned: Optional[bool] = None
+    is_archived: Optional[bool] = None
     resume_topic: Optional[bool] = None
 
 
+class ChatAttachmentIn(BaseModel):
+    type: Literal["image", "document"]
+    url: str = Field(..., min_length=8, max_length=2000)
+    name: str = Field(..., min_length=1, max_length=255)
+    size: int = Field(..., ge=1)
+    mime: str = Field("", max_length=128)
+
+
+class ChatAttachmentOut(BaseModel):
+    type: str
+    url: str
+    name: str
+    size: int = 0
+    mime: str = ""
+
+
 class SendMessageIn(BaseModel):
-    query: str = Field(..., min_length=1, max_length=8000)
+    query: str = Field("", max_length=8000)
+    files: Optional[list[ChatAttachmentIn]] = None
+
+    @model_validator(mode="after")
+    def require_query_or_files(self):
+        text = (self.query or "").strip()
+        if not text and not self.files:
+            raise ValueError("请输入内容或添加附件")
+        return self
+
+
+class DeleteChatUploadIn(BaseModel):
+    url: str = Field(..., min_length=8, max_length=2000)
 
 
 class ChatMessageOut(BaseModel):
@@ -80,9 +119,44 @@ class ChatMessageOut(BaseModel):
     session_id: int
     role: str
     content: str
+    attachments: Optional[list[ChatAttachmentOut]] = None
     create_datetime: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+    @field_validator("attachments", mode="before")
+    @classmethod
+    def coerce_attachments(cls, value: Any):
+        if value is None or value == "":
+            return None
+        if isinstance(value, list):
+            return value or None
+        if isinstance(value, str):
+            import json
+
+            try:
+                data = json.loads(value)
+            except json.JSONDecodeError:
+                return None
+            return data if isinstance(data, list) and data else None
+        return None
+
+
+class ShareMessageOut(BaseModel):
+    role: str
+    content: str
+    attachments: Optional[list[ChatAttachmentOut]] = None
+    create_datetime: Optional[datetime] = None
+
+    @field_validator("attachments", mode="before")
+    @classmethod
+    def coerce_share_attachments(cls, value: Any):
+        return ChatMessageOut.coerce_attachments(value)
+
+
+class ShareOut(BaseModel):
+    title: str
+    messages: list[ShareMessageOut]
 
 
 class ArchivedTopicItemOut(BaseModel):

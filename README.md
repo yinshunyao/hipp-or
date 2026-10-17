@@ -12,6 +12,7 @@ hipp 需求对接工程：在 [kinit](https://github.com/vvandk/kinit) 基础上
 | `hipp-api/` | FastAPI 后端：认证、管理端业务、**小程序对话 `/mp/chat`** |
 | `hipp-admin/` | Web 管理端（Vue）：含 **智能客服 / Dify 智能体** 配置与上架 |
 | `hipp-uni/` | uni-app 小程序：默认进入 **对话收件箱**，调用后端对话接口 |
+| `hipp-web/` | Vue 用户端：登录、话题、需求/商业咨询与「我的」，复用 `/mp/chat` |
 | `doc/` | 需求（01-or）、设计（02-dr）、测试设计（03-tr）、运维（99-ops） |
 
 ---

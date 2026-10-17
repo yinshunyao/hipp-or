@@ -3,12 +3,9 @@ from pydantic import ValidationError
 from apps.vadmin.auth.schemas.user import ResetPwd
 
 
-def test_reset_pwd_requires_old_password():
-    try:
-        ResetPwd(password="new-password-123", password_two="new-password-123")
-        assert False, "old_password should be required"
-    except ValidationError as exc:
-        assert "old_password" in str(exc)
+def test_reset_pwd_old_password_optional_for_first_time_flow():
+    data = ResetPwd(password="new-password-123", password_two="new-password-123")
+    assert data.old_password is None
 
 
 def test_reset_pwd_password_two_must_match():
@@ -19,7 +16,7 @@ def test_reset_pwd_password_two_must_match():
         assert "两次密码不一致" in str(exc)
 
 
-def test_reset_pwd_valid_payload():
+def test_reset_pwd_valid_payload_with_old():
     data = ResetPwd(
         old_password="old-password-123",
         password="new-password-123",

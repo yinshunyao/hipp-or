@@ -38,8 +38,24 @@
         </template>
         <template v-else>
           <view :class="['bubble', item.role === 'user' ? 'user' : 'ai']">
-            <text v-if="item.role === 'user'" class="bubble-content" selectable>{{ item.content }}</text>
-            <rich-text v-else class="bubble-content bubble-content--rich" :nodes="renderAssistantMarkdown(item.content)"></rich-text>
+            <view v-if="item.attachments && item.attachments.length" class="atts">
+              <image
+                v-for="(att, ai) in item.attachments.filter((a) => a.type === 'image')"
+                :key="'img-' + ai"
+                class="att-img"
+                :src="att.url"
+                mode="aspectFill"
+                @tap="previewAtt(att.url)"
+              />
+              <text
+                v-for="(att, ai) in item.attachments.filter((a) => a.type !== 'image')"
+                :key="'f-' + ai"
+                class="att-file"
+                @tap="openAtt(att.url)"
+              >{{ att.name || '文件' }}</text>
+            </view>
+            <text v-if="item.role === 'user' && item.content" class="bubble-content" selectable>{{ item.content }}</text>
+            <rich-text v-else-if="item.role !== 'user'" class="bubble-content bubble-content--rich" :nodes="renderAssistantMarkdown(item.content)"></rich-text>
           </view>
           <view v-if="item.role === 'user' && (item.sendStatus === 'sending' || item.sendStatus === 'failed')" class="msg-meta">
             <text v-if="item.sendStatus === 'sending'" class="msg-meta-text">发送中…</text>
@@ -62,9 +78,17 @@
       </view>
     </view>
     <view v-if="showInputBar" class="input-bar" :class="{ 'input-bar--kb-up': keyboardHeight > 0 }">
+      <view v-if="pendingFiles.length" class="pending-row">
+        <view v-for="(p, i) in pendingFiles" :key="p.key" class="pending-chip">
+          <text class="pending-name">{{ p.name }}</text>
+          <text class="pending-x" @tap="removePending(i)">×</text>
+        </view>
+      </view>
       <view class="input-shell">
+        <text class="tool-btn" @tap="pickAttach">＋</text>
+        <text class="tool-btn" @tap="toggleVoice">{{ recording ? '■' : '🎤' }}</text>
         <textarea v-model="inputText" class="input-text" :placeholder="inputPlaceholder" :placeholder-style="'color:' + tc.text3" :disabled="isReadonlySession" :auto-height="true" :maxlength="4000" :adjust-position="adjustPositionForInput" :cursor-spacing="24" :show-confirm-bar="false" @keyboardheightchange="onKbHeightChange" @keydown="onInputKeydown" />
-        <button class="send-fab" :class="{ 'send-fab--disabled': !inputText.trim() || loading || isReadonlySession || !sessionId }" :disabled="!inputText.trim() || loading || isReadonlySession || !sessionId" hover-class="send-fab--hover" @tap="sendMessage">
+        <button class="send-fab" :class="{ 'send-fab--disabled': (!inputText.trim() && !pendingFiles.length) || loading || isReadonlySession || !sessionId }" :disabled="(!inputText.trim() && !pendingFiles.length) || loading || isReadonlySession || !sessionId" hover-class="send-fab--hover" @tap="sendMessage">
           <text class="send-fab-icon">↑</text>
         </button>
       </view>
@@ -75,7 +99,7 @@
 </template>
 
 <script>
-import { getChatMessages, sendChatMessage, sendChatMessageStream, getChatSession, createHumanSupportSession, createChatSession } from '@/common/request/api/mp/chat.js'
+import { getChatMessages, sendChatMessage, sendChatMessageStream, getChatSession, createHumanSupportSession, createChatSession, uploadChatFile, deleteChatUpload, audioToText } from '@/common/request/api/mp/chat.js'
 import { themeMixin } from '@/common/mixins/theme.js'
 import navBackMixin from '@/common/mixins/nav-back.js'
 import mpKeyboardOffsetMixin from '@/common/mixins/mp-keyboard-offset.js'
@@ -93,6 +117,9 @@ export default {
       viewerContext: 'owner',
       messages: [],
       inputText: '',
+      pendingFiles: [],
+      recording: false,
+      recorderManager: null,
       loading: false,
       scrollTop: 0,
       skipShowMetaRefreshOnce: false,
@@ -220,7 +247,12 @@ export default {
       try {
         const res = await getChatMessages(this.sessionId, 1, 100)
         const list = Array.isArray(res.data) ? res.data : []
-        this.messages = list.map((m) => ({ id: m.id, role: m.role, content: m.content }))
+        this.messages = list.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          attachments: Array.isArray(m.attachments) ? m.attachments : []
+        }))
         this.$nextTick(() => this.scrollToBottom())
       } catch (e) { this.messages = [] }
     },
@@ -262,14 +294,110 @@ export default {
         try { uni.hideLoading() } catch (err) {}
       }
     },
+    previewAtt(url) {
+      if (!url) return
+      uni.previewImage({ urls: [url] })
+    },
+    openAtt(url) {
+      if (!url) return
+      // #ifdef H5
+      window.open(url, '_blank')
+      // #endif
+      // #ifndef H5
+      uni.setClipboardData({ data: url })
+      // #endif
+    },
+    async removePending(i) {
+      const row = this.pendingFiles[i]
+      if (!row) return
+      this.pendingFiles.splice(i, 1)
+      if (row.url) {
+        try { await deleteChatUpload(row.url) } catch (e) { /* 最佳努力 */ }
+      }
+    },
+    pickAttach() {
+      if (this.isReadonlySession || this.sessionKind === 'human_support' || !this.sessionId) return
+      uni.showActionSheet({
+        itemList: ['图片', '文件'],
+        success: (res) => {
+          if (res.tapIndex === 0) {
+            uni.chooseImage({
+              count: Math.max(1, 3 - this.pendingFiles.length),
+              success: async (r) => {
+                for (const path of r.tempFilePaths || []) await this.uploadOne(path)
+              }
+            })
+          } else {
+            // #ifdef MP-WEIXIN
+            uni.chooseMessageFile({
+              count: Math.max(1, 3 - this.pendingFiles.length),
+              type: 'file',
+              success: async (r) => {
+                for (const f of r.tempFiles || []) await this.uploadOne(f.path, f.name, f.size)
+              }
+            })
+            // #endif
+            // #ifndef MP-WEIXIN
+            uni.showToast({ title: '请在微信小程序中选择文件', icon: 'none' })
+            // #endif
+          }
+        }
+      })
+    },
+    async uploadOne(filePath, name, size) {
+      if (this.pendingFiles.length >= 3) {
+        uni.showToast({ title: '单次最多 3 个附件', icon: 'none' })
+        return
+      }
+      try {
+        const res = await uploadChatFile(filePath, this.sessionId)
+        const d = (res && res.data) || {}
+        this.pendingFiles.push({
+          key: this.newLocalId(),
+          type: d.type,
+          url: d.url,
+          name: d.name || name || '文件',
+          size: d.size || size || 0,
+          mime: d.mime || ''
+        })
+      } catch (e) { /* toast 已处理 */ }
+    },
+    toggleVoice() {
+      if (this.isReadonlySession || !this.sessionId || this.sessionKind === 'human_support') return
+      if (this.recording) {
+        this.recorderManager && this.recorderManager.stop()
+        this.recording = false
+        return
+      }
+      const rm = this.recorderManager || uni.getRecorderManager()
+      this.recorderManager = rm
+      rm.onStop(async (res) => {
+        this.recording = false
+        if (!res || !res.tempFilePath) return
+        try {
+          const out = await audioToText(res.tempFilePath, this.sessionId)
+          const text = (out && out.data && out.data.text) || ''
+          if (text) this.inputText = this.inputText ? `${this.inputText.trim()} ${text}` : text
+          else uni.showToast({ title: '未识别到语音', icon: 'none' })
+        } catch (e) { /* toast */ }
+      })
+      rm.onError(() => {
+        this.recording = false
+        uni.showToast({ title: '录音失败', icon: 'none' })
+      })
+      rm.start({ format: 'mp3' })
+      this.recording = true
+    },
     async sendMessage() {
       const t = this.inputText.trim()
-      if (!t || this.loading || this.isReadonlySession) return
+      const files = this.pendingFiles.slice()
+      if ((!t && !files.length) || this.loading || this.isReadonlySession) return
       if (!this.sessionId) {
         uni.showToast({ title: '会话初始化中，请稍后重试', icon: 'none' })
         return
       }
       this.inputText = ''
+      this.pendingFiles = []
       if (this.sessionTopicClosed && this.sessionAgentStatus === 'active') {
         const ok = await this.ensureWritableSessionForNewTopic()
         if (!ok) {
@@ -277,7 +405,7 @@ export default {
           return
         }
       }
-      await this.runSend(t)
+      await this.runSend(t, { files })
     },
     retrySend(index) {
       const m = this.messages[index]
@@ -288,37 +416,76 @@ export default {
         return
       }
       if (m.role !== 'user' || m.sendStatus !== 'failed') return
-      this.runSend(m.content, { retryUserIndex: index })
+      this.runSend(m.content, { retryUserIndex: index, files: m.attachments })
     },
     async runSend(query, opts = {}) {
       if (this.sessionKind === 'human_support') {
         await this.runSendHuman(query, opts)
         return
       }
-      const { retryUserIndex } = opts; if (!this.sessionId || !query || this.loading) return
+      const { retryUserIndex } = opts
+      const files = (opts.files && opts.files.length) ? opts.files : null
+      if (!this.sessionId || this.loading) return
+      if (!query && !files) return
       let userIndex, aiIndex
-      if (typeof retryUserIndex === 'number') { userIndex = retryUserIndex; const u = this.messages[userIndex]; if (!u || u.role !== 'user' || u.sendStatus !== 'failed') return; u.sendStatus = 'sending'; aiIndex = userIndex + 1; const next = this.messages[aiIndex]; if (next && next.role === 'assistant') next.content = ''; else this.messages.splice(aiIndex, 0, { role: 'assistant', content: '', localId: this.newLocalId() }) }
-      else { userIndex = this.messages.length; this.messages.push({ role: 'user', content: query, sendStatus: 'sending', localId: this.newLocalId() }); aiIndex = this.messages.length; this.messages.push({ role: 'assistant', content: '', localId: this.newLocalId() }) }
-      this.loading = true; this.$nextTick(() => this.scrollToBottom())
-      const fallbackBlocking = async () => { const res = await sendChatMessage(this.sessionId, query); const p = (res && res.data) || {}; if (this.messages[aiIndex]) this.messages[aiIndex].content = p.answer || '（无内容）'; if (p.topic_closed) { uni.showToast({ title: '话题已结束', icon: 'none' }); await this.refreshSessionAfterTopic() } }
+      if (typeof retryUserIndex === 'number') {
+        userIndex = retryUserIndex
+        const u = this.messages[userIndex]
+        if (!u || u.role !== 'user' || u.sendStatus !== 'failed') return
+        u.sendStatus = 'sending'
+        aiIndex = userIndex + 1
+        const next = this.messages[aiIndex]
+        if (next && next.role === 'assistant') next.content = ''
+        else this.messages.splice(aiIndex, 0, { role: 'assistant', content: '', localId: this.newLocalId() })
+      } else {
+        userIndex = this.messages.length
+        this.messages.push({
+          role: 'user',
+          content: query || (files ? '请结合附件内容回答' : ''),
+          attachments: files || [],
+          sendStatus: 'sending',
+          localId: this.newLocalId()
+        })
+        aiIndex = this.messages.length
+        this.messages.push({ role: 'assistant', content: '', localId: this.newLocalId() })
+      }
+      const sendFiles = files || (this.messages[userIndex] && this.messages[userIndex].attachments) || null
+      this.loading = true
+      this.$nextTick(() => this.scrollToBottom())
+      const fallbackBlocking = async () => {
+        const res = await sendChatMessage(this.sessionId, query, sendFiles)
+        const p = (res && res.data) || {}
+        if (this.messages[aiIndex]) this.messages[aiIndex].content = p.answer || '（无内容）'
+        if (p.topic_closed) {
+          uni.showToast({ title: '话题已结束', icon: 'none' })
+          await this.refreshSessionAfterTopic()
+        }
+      }
       try {
         try {
           const sr = await sendChatMessageStream(this.sessionId, query, (full) => {
             if (this.messages[aiIndex]) this.messages[aiIndex].content = full
             this.$nextTick(() => this.scrollToBottom())
-          })
+          }, sendFiles)
           if (this.messages[aiIndex] && !String(this.messages[aiIndex].content || '').trim()) this.messages[aiIndex].content = '（无内容）'
           if (sr && sr.topicClosed) {
             uni.showToast({ title: '话题已结束', icon: 'none' })
             await this.refreshSessionAfterTopic()
           }
         } catch (e) {
-          // 真机优先稳定性：流式链路任意失败都回退 blocking 发送
           await fallbackBlocking()
         }
         if (this.messages[userIndex]) this.messages[userIndex].sendStatus = 'sent'
-      } catch (e) { const msg = (e && e.message) || ''; if (msg.includes('删除')) this.sessionAgentStatus = 'deleted'; else if (msg.includes('下架')) this.sessionAgentStatus = 'offline'; if (this.messages[userIndex]) this.messages[userIndex].sendStatus = 'failed'; if (this.messages[aiIndex]) this.messages[aiIndex].content = '发送失败，请稍后重试。' }
-      finally { this.loading = false; this.$nextTick(() => this.scrollToBottom()) }
+      } catch (e) {
+        const msg = (e && e.message) || ''
+        if (msg.includes('删除')) this.sessionAgentStatus = 'deleted'
+        else if (msg.includes('下架')) this.sessionAgentStatus = 'offline'
+        if (this.messages[userIndex]) this.messages[userIndex].sendStatus = 'failed'
+        if (this.messages[aiIndex]) this.messages[aiIndex].content = '发送失败，请稍后重试。'
+      } finally {
+        this.loading = false
+        this.$nextTick(() => this.scrollToBottom())
+      }
     },
     async runSendHuman(query, opts = {}) {
       const { retryUserIndex } = opts
@@ -498,10 +665,24 @@ page {
   background: var(--t-error-bg); color: var(--t-error); font-size: $mp-font-meta;
   border: 1rpx solid var(--t-error-border);
 }
+.atts { display: flex; flex-wrap: wrap; gap: 12rpx; margin-bottom: 12rpx; }
+.att-img { width: 200rpx; height: 200rpx; border-radius: 12rpx; background: rgba(0,0,0,0.06); }
+.att-file { font-size: 24rpx; text-decoration: underline; }
+.pending-row { display: flex; flex-wrap: wrap; gap: 12rpx; margin-bottom: 12rpx; }
+.pending-chip {
+  display: flex; align-items: center; gap: 8rpx; max-width: 60%;
+  padding: 6rpx 14rpx; border-radius: 999rpx; background: var(--t-elevated); font-size: 22rpx;
+}
+.pending-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pending-x { color: var(--t-text-3); padding: 0 4rpx; }
+.tool-btn {
+  flex-shrink: 0; width: 56rpx; height: 56rpx; line-height: 56rpx; text-align: center;
+  font-size: 32rpx; color: var(--t-text-2);
+}
 .input-shell {
   display: flex; align-items: flex-end; background: var(--t-elevated); border-radius: $mp-radius-pill;
   border: $mp-border solid var(--t-border);
-  padding: $mp-gap-3 $mp-gap-3 $mp-gap-3 $mp-gap-7; gap: $mp-gap-3;
+  padding: $mp-gap-3 $mp-gap-3 $mp-gap-3 $mp-gap-3; gap: $mp-gap-2;
   transition: border-color 0.25s ease;
 }
 .input-shell:focus-within { border-color: var(--t-border-focus); }

@@ -175,6 +175,66 @@ Component({
           this.deferSyncActive();
         }
       });
+    },
+    async takeScreenshot() {
+      try {
+        let tempFilePath;
+        try {
+          const sys = uni.getSystemInfoSync();
+          const width = sys.windowWidth || 375;
+          const height = sys.windowHeight || 667;
+          const canvasId = `screenshot_canvas_${Date.now()}`;
+          // 动态创建隐藏 canvas，并尝试将当前视图绘制后导出
+          if (typeof uni.createOffscreenCanvas === 'function') {
+            const canvas = uni.createOffscreenCanvas({
+              type: '2d',
+              width,
+              height
+            });
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.clearRect(0, 0, width, height);
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(0, 0, width, height);
+            }
+            tempFilePath = await new Promise((resolve, reject) => {
+              uni.canvasToTempFilePath({
+                canvas,
+                success: (res) => resolve(res.tempFilePath),
+                fail: reject
+              }, this);
+            });
+          } else {
+            tempFilePath = await new Promise((resolve, reject) => {
+              uni.canvasToTempFilePath({
+                canvasId,
+                success: (res) => resolve(res.tempFilePath),
+                fail: reject
+              }, this);
+            });
+          }
+        } catch (canvasErr) {
+          // canvas 不可用（如 iOS 真机限制）时 fallback
+          tempFilePath = await new Promise((resolve, reject) => {
+            uni.getScreenCapture({
+              success: (res) => resolve(res.tempFilePath || res.filePath),
+              fail: reject
+            });
+          });
+        }
+        await new Promise((resolve, reject) => {
+          uni.uploadFile({
+            url: '/api/upload/screenshot',
+            filePath: tempFilePath,
+            name: 'file',
+            success: resolve,
+            fail: reject
+          });
+        });
+      } catch (err) {
+        uni.showToast({ title: '截图失败', icon: 'none' });
+      }
+      // 需在 template 中绑定 `<button @click="takeScreenshot">截屏</button>`
     }
   }
 });

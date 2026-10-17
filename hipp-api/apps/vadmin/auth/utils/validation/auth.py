@@ -144,7 +144,9 @@ class AuthValidation:
         """
         if user.is_admin():
             return 4, ["*"]
-        data_range = max([i.data_range for i in user.roles])
+        role_ranges = [i.data_range for i in user.roles]
+        # 无角色（如短信自动建号未分配角色）时无法取 max，按「仅本人」数据范围处理
+        data_range = max(role_ranges) if role_ranges else 0
         dept_ids = set()
         if data_range == 0:
             pass

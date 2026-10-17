@@ -9,9 +9,9 @@ import { FormSchema } from '@/components/Form'
 import { postSMSCodeApi } from '@/api/login'
 import { UserLoginType } from '@/api/login/types'
 import { useAuthStore } from '@/store/modules/auth'
-import { RouteLocationNormalizedLoaded, useRouter, RouteRecordRaw } from 'vue-router'
-import { getRoleMenusApi } from '@/api/login'
+import { RouteLocationNormalizedLoaded, useRouter } from 'vue-router'
 import { usePermissionStore } from '@/store/modules/permission'
+import { loadDynamicMenuRoutes } from '@/utils/loadDynamicMenuRoutes'
 import { BaseButton } from '@/components/Button'
 import { normalizeLoginRedirectToRouterPath } from '@/utils/loginRedirect'
 
@@ -21,7 +21,8 @@ const { formRegister, formMethods } = useForm()
 const { getFormData, getElFormExpose } = formMethods
 const { t } = useI18n()
 const { required } = useValidator()
-const { currentRoute, addRoute, push } = useRouter()
+const router = useRouter()
+const { currentRoute, push } = router
 const permissionStore = usePermissionStore()
 const authStore = useAuthStore()
 
@@ -166,11 +167,10 @@ const telephoneCodeLogin = async () => {
       const res = await authStore.login(formData)
       if (res) {
         if (!res.data.is_reset_password) {
-          // 重置密码
           push({ path: '/reset/password' })
+          loading.value = false
         } else {
-          // 是否使用动态路由
-          getMenu()
+          await getMenu()
         }
       } else {
         loading.value = false
@@ -213,17 +213,20 @@ const getSMSCode = async () => {
 
 // 获取用户菜单信息
 const getMenu = async () => {
-  const res = await getRoleMenusApi()
-  if (res) {
-    const routers = res.data || []
-    await permissionStore.generateRoutes(routers).catch(() => {})
-    permissionStore.getAddRouters.forEach((route) => {
-      addRoute(route as RouteRecordRaw) // 动态添加可访问路由表
-    })
-    permissionStore.setIsAddRouters(true)
-    push({
-      path: normalizeLoginRedirectToRouterPath(redirect.value) || permissionStore.addRouters[0].path
-    })
+  try {
+    const ok = await loadDynamicMenuRoutes(router, permissionStore)
+    if (!ok) {
+      push({ path: '/no-access', replace: true })
+    } else {
+      push({
+        path:
+          normalizeLoginRedirectToRouterPath(redirect.value) ||
+          permissionStore.addRouters[0]?.path ||
+          '/'
+      })
+    }
+  } finally {
+    loading.value = false
   }
 }
 </script>

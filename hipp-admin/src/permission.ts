@@ -1,12 +1,11 @@
 import { hasRoute } from './router'
 import router from './router'
-import type { RouteRecordRaw } from 'vue-router'
 import { useTitle } from '@/hooks/web/useTitle'
 import { useNProgress } from '@/hooks/web/useNProgress'
 import { usePermissionStoreWithOut } from '@/store/modules/permission'
 import { usePageLoading } from '@/hooks/web/usePageLoading'
 import { useAuthStoreWithOut } from '@/store/modules/auth'
-import { getRoleMenusApi } from '@/api/login'
+import { loadDynamicMenuRoutes } from '@/utils/loadDynamicMenuRoutes'
 import {
   joinPublicPathForLoginRedirect,
   normalizeLoginRedirectToRouterPath
@@ -23,6 +22,10 @@ router.beforeEach(async (to, from, next) => {
   loadStart()
   const permissionStore = usePermissionStoreWithOut()
   const authStore = useAuthStoreWithOut()
+
+  if (!authStore.getToken) {
+    await authStore.trySso()
+  }
 
   if (authStore.getToken) {
     if (to.path === '/login') {
@@ -41,17 +44,18 @@ router.beforeEach(async (to, from, next) => {
         return
       }
 
-      // 开发者可根据实际情况进行修改
-      const res = await getRoleMenusApi()
-      const routers = res.data || []
-      await permissionStore.generateRoutes(routers).catch(() => {})
-      permissionStore.getAddRouters.forEach((route) => {
-        router.addRoute(route as RouteRecordRaw) // 动态添加可访问路由表
-      })
+      const ok = await loadDynamicMenuRoutes(router, permissionStore)
+      if (!ok) {
+        if (to.path !== '/no-access') {
+          next({ path: '/no-access', replace: true })
+        } else {
+          next()
+        }
+        return
+      }
       const redirectPath = from.query.redirect || to.path
       const redirect = normalizeLoginRedirectToRouterPath(redirectPath as string)
       const nextData = to.path === redirect ? { ...to, replace: true } : { path: redirect }
-      permissionStore.setIsAddRouters(true)
       next(nextData)
     }
   } else {

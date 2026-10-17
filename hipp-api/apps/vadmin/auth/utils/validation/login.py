@@ -72,6 +72,7 @@ class LoginResult(BaseModel):
     status: bool | None = False
     user: schemas.UserPasswordOut | None = None
     msg: str | None = None
+    manager_token: str | None = None
 
     class Config:
         arbitrary_types_allowed = True
@@ -127,4 +128,7 @@ class LoginValidation:
             await crud.UserDal(db).update_login_info(user, request.client.host)
             await db.refresh(user)
             self.result.user = schemas.UserPasswordOut.model_validate(user)
+            token = getattr(result, "manager_token", None)
+            if token:
+                self.result.manager_token = str(token).strip() or None
         return self.result

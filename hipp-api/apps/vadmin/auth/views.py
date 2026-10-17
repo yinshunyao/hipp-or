@@ -14,6 +14,7 @@ from utils.response import SuccessResponse, ErrorResponse
 from . import schemas, crud, models
 from core.dependencies import IdList
 from apps.vadmin.auth.utils.current import AllUserAuth, FullAdminAuth, OpenAuth
+from apps.vadmin.auth.utils.password_flags import user_must_set_password_without_old
 from apps.vadmin.auth.utils.validation.auth import Auth
 from .params import UserParams, RoleParams, DeptParams
 
@@ -114,6 +115,7 @@ async def post_user_current_update_avatar(file: UploadFile, auth: Auth = Depends
 @app.get("/user/admin/current/info", summary="获取当前管理员信息")
 async def get_user_admin_current_info(auth: Auth = Depends(FullAdminAuth())):
     result = schemas.UserOut.model_validate(auth.user).model_dump()
+    result["must_set_password_without_old"] = user_must_set_password_without_old(auth.user)
     result["user_tags"] = schemas.compute_user_tags(auth.user)
     result["permissions"] = list(FullAdminAuth.get_user_permissions(auth.user))
     return SuccessResponse(result)

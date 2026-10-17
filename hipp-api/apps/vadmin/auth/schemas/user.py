@@ -77,6 +77,7 @@ class UserSimpleOut(User):
     is_system_created: bool = True
     is_blocked: bool = False
     is_reset_password: bool | None = None
+    must_set_password_without_old: bool = False
     last_login: DatetimeStr | None = None
     last_ip: str | None = None
 
@@ -111,7 +112,8 @@ class UserOut(UserSimpleOut):
 
 
 class ResetPwd(BaseModel):
-    old_password: str
+    """短信首次注册用户可无 old_password（由服务端按 must_set_password_without_old 校验）。"""
+    old_password: str | None = None
     password: str
     password_two: str
 

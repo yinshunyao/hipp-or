@@ -36,7 +36,8 @@ from .validation import AuthSmsSendIn, LoginForm, MPGuestLoginForm, WXLoginForm
 from apps.vadmin.record.models import VadminLoginRecord
 from apps.vadmin.auth.crud import MenuDal, UserDal
 from apps.vadmin.auth.models import VadminUser
-from .current import FullAdminAuth
+from apps.vadmin.auth.utils.password_flags import user_must_set_password_without_old
+from .current import AllUserAuth, FullAdminAuth
 from .validation.auth import Auth
 from utils.wx.oauth import WXOAuth
 import jwt
@@ -85,6 +86,14 @@ async def auth_login_sms_send(
     body: AuthSmsSendIn,
     rd: Redis = Depends(redis_getter),
 ):
+    from utils import hipp_manager
+
+    if hipp_manager.enabled():
+        try:
+            hipp_manager.sms_send(body.telephone)
+        except hipp_manager.ManagerError as e:
+            return ErrorResponse(msg=str(e))
+        return SuccessResponse(True)
     sms = CodeSMS(body.telephone, rd)
     return SuccessResponse(await sms.main_async())
 
@@ -127,14 +136,86 @@ async def login_for_access_token(
             "refresh_token": refresh_token,
             "token_type": "bearer",
             "is_reset_password": result.user.is_reset_password,
+            "must_set_password_without_old": user_must_set_password_without_old(result.user),
             "is_wx_server_openid": result.user.is_wx_server_openid,
             "user_type": result.user.user_type
         }
+        if getattr(result, "manager_token", None):
+            resp["manager_token"] = result.manager_token
+            from application.settings import REDIS_DB_ENABLE
+            from utils.manager_session import store_manager_token
+
+            if REDIS_DB_ENABLE and getattr(request.app.state, "redis", None):
+                await store_manager_token(
+                    request.app.state.redis, result.user.id, result.manager_token
+                )
         await VadminLoginRecord.create_login_record(db, data, True, request, resp)
         return SuccessResponse(resp)
     except ValueError as e:
         await VadminLoginRecord.create_login_record(db, data, False, request, {"message": str(e)})
         return ErrorResponse(msg=str(e))
+
+
+@app.post(
+    "/sso",
+    summary="同站 SSO 换票",
+    description="用同源 hipp_manager_token（Authorization Bearer）换发本产品会话",
+)
+async def sso_from_manager(
+    request: Request,
+    db: AsyncSession = Depends(db_getter),
+):
+    from utils import hipp_manager
+
+    if not hipp_manager.enabled():
+        return ErrorResponse(msg="未配置用户系统", code=503)
+    header = request.headers.get("authorization") or ""
+    access = header[7:].strip() if header.lower().startswith("bearer ") else ""
+    if not access:
+        return ErrorResponse(msg="请先登录", code=401)
+    try:
+        profile = hipp_manager.me(access)
+    except hipp_manager.ManagerError as e:
+        return ErrorResponse(msg=str(e) or "请重新登录", code=401)
+    telephone = str(profile.get("phone") or "").strip()
+    if not telephone:
+        return ErrorResponse(msg="请重新登录", code=401)
+    dal = UserDal(db)
+    user = await dal.get_data(telephone=telephone, v_return_none=True)
+    if not user:
+        user = await dal.create_user_for_mp_sms_register(telephone)
+    if getattr(user, "is_blocked", False):
+        return ErrorResponse(msg="此账号已被拉黑", code=401)
+    if not user.is_active:
+        return ErrorResponse(msg="此账号已被冻结", code=401)
+    if not user.is_staff:
+        return ErrorResponse(msg="此账号无权限", code=401)
+    await dal.update_login_info(user, request.client.host if request.client else "")
+    await db.refresh(user)
+    access_token = LoginManage.create_token(
+        {"sub": user.telephone, "is_refresh": False, "password": user.password}
+    )
+    expires = timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+    refresh_token = LoginManage.create_token(
+        payload={"sub": user.telephone, "is_refresh": True, "password": user.password},
+        expires=expires,
+    )
+    from application.settings import REDIS_DB_ENABLE
+    from utils.manager_session import store_manager_token
+
+    if REDIS_DB_ENABLE and getattr(request.app.state, "redis", None):
+        await store_manager_token(request.app.state.redis, user.id, access)
+    resp = {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "is_reset_password": user.is_reset_password,
+        "must_set_password_without_old": user_must_set_password_without_old(user),
+        "is_wx_server_openid": user.is_wx_server_openid,
+        "user_type": user.user_type,
+        "manager_token": access,
+    }
+    return SuccessResponse(resp)
 
 
 @app.post("/wx/login", summary="微信服务端一键登录", description="小程序微信授权登录")
@@ -181,6 +262,7 @@ async def wx_login_for_access_token(
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "is_reset_password": user.is_reset_password,
+        "must_set_password_without_old": user_must_set_password_without_old(user),
         "is_wx_server_openid": user.is_wx_server_openid,
         "user_type": user.user_type
     }
@@ -223,10 +305,37 @@ async def mp_guest_login(
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "is_reset_password": user.is_reset_password,
+        "must_set_password_without_old": user_must_set_password_without_old(user),
         "is_wx_server_openid": user.is_wx_server_openid,
         "user_type": user.user_type,
     }
     return SuccessResponse(resp)
+
+
+@app.get("/me", summary="当前登录用户简要信息（含次卡临时用户）")
+async def auth_me(auth: Auth = Depends(AllUserAuth())):
+    u = auth.user
+    role_names = []
+    try:
+        for r in getattr(u, "roles", None) or []:
+            name = getattr(r, "name", None)
+            if name:
+                role_names.append(name)
+    except Exception:
+        role_names = []
+    return SuccessResponse(
+        {
+            "name": u.name,
+            "nickname": u.nickname,
+            "telephone": u.telephone,
+            "avatar": u.avatar,
+            "gender": u.gender,
+            "user_type": u.user_type,
+            "roles": [{"name": n} for n in role_names],
+            "must_set_password_without_old": user_must_set_password_without_old(u),
+            "is_reset_password": u.is_reset_password,
+        }
+    )
 
 
 @app.get("/getMenuList", summary="获取当前用户菜单树")
@@ -269,6 +378,8 @@ async def token_refresh(
     resp = {
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "is_reset_password": user.is_reset_password,
+        "must_set_password_without_old": user_must_set_password_without_old(user),
     }
     return SuccessResponse(resp)

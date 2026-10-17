@@ -8,8 +8,17 @@ import { resetRouter } from '@/router'
 import { useTagsViewStore } from '@/store/modules/tagsView'
 import router from '@/router'
 import { ElMessage } from 'element-plus'
+import {
+  broadcastLogout,
+  getManagerToken,
+  markLogin,
+  setManagerToken,
+  shouldClearLocal
+} from '@/utils/sso'
 
 const { clear } = useStorage()
+const PRODUCT = 'or-admin'
+const API = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
 
 export interface UserState {
   id?: number
@@ -84,10 +93,41 @@ export const useAuthStore = defineStore('auth', {
       if (res) {
         this.token = `${res.data.token_type} ${res.data.access_token}`
         this.refreshToken = res.data.refresh_token
+        markLogin(PRODUCT)
+        if (res.data.manager_token) setManagerToken(res.data.manager_token)
         // 获取当前登录用户的信息
         await this.setUserInfo()
       }
       return res
+    },
+    async trySso(): Promise<boolean> {
+      if (shouldClearLocal(PRODUCT)) {
+        setManagerToken(null)
+        this.reset()
+        return false
+      }
+      if (this.token || !getManagerToken()) return false
+      try {
+        const managerToken = getManagerToken() as string
+        const res = await fetch(`${API}/auth/sso`, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${managerToken}`
+          }
+        })
+        const payload = await res.json().catch(() => ({}))
+        const code = payload.code || (res.ok ? 200 : res.status)
+        if (code !== 200 || !payload.data) return false
+        this.token = `${payload.data.token_type} ${payload.data.access_token}`
+        this.refreshToken = payload.data.refresh_token || ''
+        markLogin(PRODUCT)
+        if (payload.data.manager_token) setManagerToken(payload.data.manager_token)
+        await this.setUserInfo()
+        return true
+      } catch {
+        return false
+      }
     },
     reset() {
       this.user = {}
@@ -98,6 +138,8 @@ export const useAuthStore = defineStore('auth', {
       this.refreshToken = ''
     },
     logout(message?: string) {
+      broadcastLogout()
+      setManagerToken(null)
       clear()
       this.reset()
       const tagsViewStore = useTagsViewStore()

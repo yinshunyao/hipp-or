@@ -16,6 +16,7 @@ const state = {
   isUser: storage.get(auth.isUser) || false,
   isUserOpenid: storage.get(auth.isUserOpenid) || false,
   isResetPassword: storage.get(auth.isResetPassword) || false,
+  mustSetPasswordWithoutOld: storage.get(auth.mustSetPasswordWithoutOld) || false,
   userType: storage.get(auth.userType) || 'system',
   name: storage.get(auth.name),
   nickname: storage.get(auth.nickname),
@@ -42,6 +43,10 @@ const mutations = {
   SET_IS_RESET_PASSWORD: (state, isResetPassword) => {
     state.isResetPassword = isResetPassword
     storage.set(auth.isResetPassword, isResetPassword)
+  },
+  SET_MUST_SET_PASSWORD_WITHOUT_OLD: (state, v) => {
+    state.mustSetPasswordWithoutOld = v
+    storage.set(auth.mustSetPasswordWithoutOld, v)
   },
   SET_USER_TYPE: (state, userType) => {
     state.userType = userType
@@ -110,6 +115,8 @@ const actions = {
               setToken(`${payload.token_type} ${payload.access_token}`)
               commit('SET_TOKEN', `${payload.token_type} ${payload.access_token}`)
               commit('SET_REFRESH_TOKEN', payload.refresh_token)
+              commit('SET_IS_RESET_PASSWORD', !!payload.is_reset_password)
+              commit('SET_MUST_SET_PASSWORD_WITHOUT_OLD', !!payload.must_set_password_without_old)
               commit('SET_USER_TYPE', payload.user_type || 'mp_guest')
               resolve(r)
             })
@@ -134,8 +141,10 @@ const actions = {
           setToken(`${res.data.token_type} ${res.data.access_token}`)
           commit('SET_TOKEN', `${res.data.token_type} ${res.data.access_token}`)
           commit('SET_REFRESH_TOKEN', res.data.refresh_token)
+          commit('SET_TELEPHONE', telephone)
           commit('SET_IS_USER_OPENID', res.data.is_wx_server_openid)
           commit('SET_IS_RESET_PASSWORD', res.data.is_reset_password)
+          commit('SET_MUST_SET_PASSWORD_WITHOUT_OLD', !!res.data.must_set_password_without_old)
           commit('SET_USER_TYPE', res.data.user_type || 'system')
           resolve(res)
         })
@@ -155,8 +164,10 @@ const actions = {
           setToken(`${res.data.token_type} ${res.data.access_token}`)
           commit('SET_TOKEN', `${res.data.token_type} ${res.data.access_token}`)
           commit('SET_REFRESH_TOKEN', res.data.refresh_token)
+          commit('SET_TELEPHONE', t)
           commit('SET_IS_USER_OPENID', res.data.is_wx_server_openid)
           commit('SET_IS_RESET_PASSWORD', res.data.is_reset_password)
+          commit('SET_MUST_SET_PASSWORD_WITHOUT_OLD', !!res.data.must_set_password_without_old)
           commit('SET_USER_TYPE', res.data.user_type || 'system')
           resolve(res)
         })
@@ -178,6 +189,7 @@ const actions = {
           commit('SET_REFRESH_TOKEN', res.data.refresh_token)
           commit('SET_IS_USER_OPENID', res.data.is_wx_server_openid)
           commit('SET_IS_RESET_PASSWORD', res.data.is_reset_password)
+          commit('SET_MUST_SET_PASSWORD_WITHOUT_OLD', !!res.data.must_set_password_without_old)
           commit('SET_USER_TYPE', res.data.user_type || 'wechat')
           resolve(res)
         })
@@ -211,6 +223,12 @@ const actions = {
           commit('SET_TELEPHONE', user.telephone)
           commit('SET_AVATAR', avatar)
           commit('SET_CREATE_DATETIME', user.create_datetime)
+          if (user.is_reset_password !== undefined && user.is_reset_password !== null) {
+            commit('SET_IS_RESET_PASSWORD', !!user.is_reset_password)
+          }
+          if (user.must_set_password_without_old !== undefined && user.must_set_password_without_old !== null) {
+            commit('SET_MUST_SET_PASSWORD_WITHOUT_OLD', !!user.must_set_password_without_old)
+          }
           commit('SET_ISUSER', true)
           resolve(res)
         })
@@ -243,6 +261,7 @@ const actions = {
       commit('SET_CREATE_DATETIME', '')
       commit('SET_IS_USER_OPENID', false)
       commit('SET_IS_RESET_PASSWORD', false)
+      commit('SET_MUST_SET_PASSWORD_WITHOUT_OLD', false)
       commit('SET_USER_TYPE', 'system')
       commit('SET_ISUSER', false)
       removeToken()

@@ -89,6 +89,76 @@ async def connect_redis(app: FastAPI, status: bool):
         await app.state.redis.close()
 
 
+async def start_media_orphan_gc(app: FastAPI, status: bool):
+    """
+    每日 Asia/Shanghai 指定整点清理平台 chat 孤儿媒体（上传未发送且超宽限期）。
+    依赖 Redis 日锁；无 Redis 时仍跑，但多 worker 可能重复扫（删已不存在视为成功）。
+    """
+    import asyncio
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    from application import settings
+
+    tz = ZoneInfo("Asia/Shanghai")
+
+    async def _try_lock(day_key: str) -> bool:
+        rd = getattr(app.state, "redis", None)
+        if rd is None:
+            return True
+        try:
+            # 锁约 26h，避免同日重复
+            ok = await rd.set(f"or:media_orphan_gc:{day_key}", "1", nx=True, ex=26 * 3600)
+            return bool(ok)
+        except Exception:
+            logger.exception("media orphan gc redis lock failed")
+            return False
+
+    async def _loop() -> None:
+        hour = int(getattr(settings, "MEDIA_ORPHAN_GC_HOUR", 3) or 3)
+        hour = min(23, max(0, hour))
+        min_age = int(getattr(settings, "MEDIA_ORPHAN_GC_MIN_AGE_HOURS", 24) or 24)
+        while True:
+            try:
+                now = datetime.now(tz)
+                target = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+                if now >= target:
+                    target = target + timedelta(days=1)
+                wait_s = max(5.0, (target - now).total_seconds())
+                await asyncio.sleep(wait_s)
+                day_key = datetime.now(tz).strftime("%Y%m%d")
+                if not await _try_lock(day_key):
+                    logger.info("media orphan gc skip: lock held day=%s", day_key)
+                    await asyncio.sleep(60)
+                    continue
+                from apps.mp_chat.media_cleanup import run_orphan_media_gc
+
+                await run_orphan_media_gc(min_age_hours=min_age)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("media orphan gc loop error")
+                await asyncio.sleep(60)
+
+    if status:
+        app.state.media_orphan_gc_task = asyncio.create_task(_loop())
+        print(
+            f"媒体孤儿 GC 已启动：每日 {getattr(settings, 'MEDIA_ORPHAN_GC_HOUR', 3)}:00 "
+            f"(Asia/Shanghai)，宽限期 {getattr(settings, 'MEDIA_ORPHAN_GC_MIN_AGE_HOURS', 24)}h"
+        )
+    else:
+        task = getattr(app.state, "media_orphan_gc_task", None)
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+        print("媒体孤儿 GC 已停止")
+
+
 async def connect_mongo(app: FastAPI, status: bool):
     """
     把 mongo 挂载到 app 对象上面

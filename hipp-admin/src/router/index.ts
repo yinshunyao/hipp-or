@@ -10,7 +10,8 @@ export const constantRouterMap: AppRouteRecordRaw[] = [
   {
     path: '/',
     component: Layout,
-    redirect: '/dashboard/analysis',
+    // 落地页与 asyncRouterMap 中实际存在的 workplace 对齐；analysis 已不在常量路由中
+    redirect: '/dashboard/workplace',
     name: 'Root',
     meta: {
       hidden: true
@@ -110,6 +111,16 @@ export const constantRouterMap: AppRouteRecordRaw[] = [
       title: '404',
       noTagsView: true
     }
+  },
+  {
+    path: '/no-access',
+    component: () => import('@/views/Error/NoAccess.vue'),
+    name: 'NoAccess',
+    meta: {
+      hidden: true,
+      title: '无访问权限',
+      noTagsView: true
+    }
   }
 ]
 
@@ -137,6 +148,26 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
     ]
   },
   {
+    path: '/agent',
+    component: Layout,
+    name: 'Agent',
+    meta: {
+      title: '智能客服',
+      icon: 'ep:chat-dot-round',
+      alwaysShow: true
+    },
+    children: [
+      {
+        path: 'manager',
+        component: () => import('@/views/Vadmin/AgentManager/AgentManager.vue'),
+        name: 'AgentManager',
+        meta: {
+          title: '智能客服管理'
+        }
+      }
+    ]
+  },
+  {
     path: '/mp-staff',
     component: Layout,
     name: 'MpStaff',
@@ -156,6 +187,59 @@ export const asyncRouterMap: AppRouteRecordRaw[] = [
         }
       }
     ]
+  },
+  {
+    path: '/billing',
+    component: Layout,
+    redirect: '/billing/session-fee',
+    name: 'Billing',
+    meta: {
+      title: '计费配置',
+      icon: 'ant-design:pay-circle-outlined',
+      alwaysShow: true
+    },
+    children: [
+      {
+        path: 'session-fee',
+        component: () => import('@/views/Vadmin/Billing/SessionFee.vue'),
+        name: 'BillingSessionFee',
+        meta: {
+          title: '会话咨询费用',
+          noCache: true
+        }
+      }
+    ]
+  },
+  {
+    path: '/commerce',
+    component: Layout,
+    redirect: '/commerce/orders',
+    name: 'Commerce',
+    meta: {
+      title: '电商履约',
+      icon: 'ant-design:shop-outlined',
+      alwaysShow: true
+    },
+    children: [
+      {
+        path: 'orders',
+        component: () => import('@/views/Vadmin/Commerce/ChannelOrders.vue'),
+        name: 'CommerceChannelOrders',
+        meta: {
+          title: '渠道订单',
+          noCache: true
+        }
+      },
+      {
+        path: 'entitlements',
+        component: () => import('@/views/Vadmin/Commerce/Entitlements.vue'),
+        name: 'CommerceEntitlements',
+        meta: {
+          title: '次卡短链',
+          noCache: true
+        }
+      }
+    ]
   }
 ]
 
@@ -171,6 +255,7 @@ export const resetRouter = (): void => {
   const resetWhiteNameList = [
     'Login',
     'NoFind',
+    'NoAccess',
     'Root',
     'ResetPassword',
     'Redirect',

@@ -94,23 +94,57 @@
         </view>
       </template>
 
-      <button class="login-btn" hover-class="login-btn--hover" @click="handleLogin">
+      <button
+        class="login-btn"
+        :class="{ 'login-btn--disabled': !hasAgreed }"
+        :disabled="!hasAgreed"
+        :hover-class="hasAgreed ? 'login-btn--hover' : 'none'"
+        @click="handleLogin"
+      >
         <text class="login-btn-text">登 录</text>
       </button>
       <view class="home-entry" @click="goHome">返回首页</view>
 
+      <view v-if="legalModalVisible" class="legal-mask">
+        <view class="legal-sheet" @click.stop>
+          <view class="legal-sheet__title">{{ legalModalTitle }}</view>
+          <scroll-view
+            class="legal-sheet__scroll"
+            scroll-y
+            :show-scrollbar="true"
+            :lower-threshold="60"
+            @scrolltolower="onLegalScrollToLower"
+          >
+            <view class="legal-sheet__inner">
+              <text class="legal-sheet__text">{{ legalModalBody }}</text>
+            </view>
+          </scroll-view>
+          <view class="legal-sheet__footer">
+            <button
+              class="legal-sheet__btn"
+              :class="{ 'legal-sheet__btn--disabled': !legalBtnEnabled }"
+              :disabled="!legalBtnEnabled"
+              hover-class="legal-sheet__btn--hover"
+              @click="closeLegalModal"
+            >
+              {{ legalButtonLabel }}
+            </button>
+          </view>
+        </view>
+      </view>
+
       <view class="agree-row">
         <zb-tooltip :visible.sync="tooltipVisible" content="请阅读并同意" placement="top" ref="tooltip">
           <view>
-            <u-checkbox-group v-model="isAgrement" shape="circle" @change="checkboxChange" :active-color="tc.accent">
-              <u-checkbox></u-checkbox>
+            <u-checkbox-group v-model="agreeTerms" shape="circle" :active-color="tc.accent">
+              <u-checkbox name="agree"></u-checkbox>
             </u-checkbox-group>
           </view>
         </zb-tooltip>
         <view class="agree-text">
           <text class="agree-grey">允许我们在必要场景下，合理使用您的个人信息，且阅读并同意</text>
           <text class="agree-link" @click="handleUserAgrement">《用户协议》、</text>
-          <text class="agree-link" @click="handlePrivacy">《隐私协议》、</text>
+          <text class="agree-link" @click="handlePrivacy">《隐私协议》</text>
           <text class="agree-grey">等内容</text>
         </view>
       </view>
@@ -122,6 +156,12 @@
 <script>
 import { themeMixin } from '@/common/mixins/theme.js'
 import { sendLoginSms } from '@/common/request/api/login.js'
+import { PRIVACY_POLICY_TEXT, USER_AGREEMENT_TEXT } from '@/common/legal/static-texts.js'
+import {
+  isLegalConfirmed,
+  setLegalConfirmed,
+  isBothLegalConfirmed
+} from '@/common/legal/consent-storage.js'
 
 export default {
   mixins: [themeMixin],
@@ -132,21 +172,55 @@ export default {
       smsCode: '',
       smsCooldown: 0,
       smsTimer: null,
-      isAgrement: false,
+      /** u-checkbox-group 须绑定 Array：未选 []，已选含 name 如 ['agree']；勿用 boolean，否则 [] 会被判为真导致未勾选仍可登录 */
+      agreeTerms: [],
       tooltipVisible: false,
       phoneFocus: false,
       pwdFocus: false,
       codeFocus: false,
-      passwordVisible: false
+      passwordVisible: false,
+      legalModalVisible: false,
+      legalModalKind: null,
+      legalModalTitle: '',
+      legalModalBody: '',
+      legalReadOk: false,
+      legalReturnOnly: false,
+      /** 用户曾在「两协议均已缓存确认」情况下手动取消勾选，本页会话内不再自动勾选 */
+      userDeclinedAgree: false
     }
   },
   computed: {
     title() { return this.$store.state.app.title },
     logo() { return this.$store.state.app.logo },
     logoImage() { return this.$store.state.app.logoImage },
-    privacy() { return this.$store.state.app.privacy },
-    agreement() { return this.$store.state.app.agreement },
-    isResetPassword() { return this.$store.state.auth.isResetPassword }
+    isResetPassword() { return this.$store.state.auth.isResetPassword },
+    hasAgreed() {
+      return Array.isArray(this.agreeTerms) && this.agreeTerms.length > 0
+    },
+    legalBtnEnabled() {
+      return this.legalReturnOnly || this.legalReadOk
+    },
+    legalButtonLabel() {
+      if (this.legalReturnOnly) return '返回'
+      if (this.legalReadOk) return '我已阅读并返回'
+      return '请下滑至底部阅读全文'
+    }
+  },
+  mounted() {
+    this.applyAutoAgreeFromStorage()
+  },
+  onShow() {
+    this.applyAutoAgreeFromStorage()
+  },
+  watch: {
+    agreeTerms(n, o) {
+      this.tooltipVisible = false
+      const prevLen = (o && o.length) || 0
+      const nowLen = (n && n.length) || 0
+      if (prevLen > 0 && nowLen === 0 && isBothLegalConfirmed()) {
+        this.userDeclinedAgree = true
+      }
+    }
   },
   beforeDestroy() {
     if (this.smsTimer) {
@@ -159,13 +233,58 @@ export default {
       this.loginMode = mode
     },
     handlePrivacy() {
-      this.$tab.navigateTo(`/subpkg/common/webview/index?title=隐私政策&url=${this.privacy}`)
+      this.openLegalModal('privacy', '隐私政策', PRIVACY_POLICY_TEXT)
     },
     handleUserAgrement() {
-      this.$tab.navigateTo(`/subpkg/common/webview/index?title=用户协议&url=${this.agreement}`)
+      this.openLegalModal('agreement', '用户协议', USER_AGREEMENT_TEXT)
+    },
+    openLegalModal(kind, title, body) {
+      this.legalModalKind = kind
+      this.legalModalTitle = title
+      this.legalModalBody = body
+      this.legalReturnOnly = isLegalConfirmed(kind)
+      this.legalReadOk = this.legalReturnOnly
+      this.legalModalVisible = true
+      if (this.legalReturnOnly) return
+      this.$nextTick(() => {
+        this.checkLegalShortContent()
+        setTimeout(() => this.checkLegalShortContent(), 150)
+      })
+    },
+    onLegalScrollToLower() {
+      this.legalReadOk = true
+    },
+    checkLegalShortContent() {
+      if (this.legalReturnOnly) return
+      const q = uni.createSelectorQuery().in(this)
+      q.select('.legal-sheet__inner').boundingClientRect()
+      q.select('.legal-sheet__scroll').boundingClientRect()
+      q.exec((res) => {
+        if (!res || !res[0] || !res[1]) return
+        const innerH = res[0].height
+        const boxH = res[1].height
+        if (innerH <= boxH + 12) this.legalReadOk = true
+      })
+    },
+    closeLegalModal() {
+      if (!this.legalBtnEnabled) return
+      if (this.legalReturnOnly) {
+        this.legalModalVisible = false
+        return
+      }
+      if (this.legalModalKind) setLegalConfirmed(this.legalModalKind)
+      this.legalModalVisible = false
+      if (isBothLegalConfirmed()) {
+        this.userDeclinedAgree = false
+        this.agreeTerms = ['agree']
+      }
+    },
+    applyAutoAgreeFromStorage() {
+      if (!isBothLegalConfirmed() || this.userDeclinedAgree) return
+      this.agreeTerms = ['agree']
     },
     sendSmsCode() {
-      if (!this.isAgrement) {
+      if (!this.hasAgreed) {
         this.tooltipVisible = true
         return
       }
@@ -200,7 +319,7 @@ export default {
         })
     },
     async handleLogin() {
-      if (!this.isAgrement) {
+      if (!this.hasAgreed) {
         this.tooltipVisible = true
         return
       }
@@ -241,7 +360,6 @@ export default {
     loginSuccess() {
       this.$tab.reLaunch(this.isResetPassword ? '/pages/home/index' : '/subpkg/mine/pwd/index')
     },
-    checkboxChange() { this.isAgrement = !this.isAgrement; this.tooltipVisible = false },
     goHome() {
       uni.switchTab({ url: '/pages/home/index' })
     }
@@ -359,6 +477,11 @@ page { background-color: var(--t-root, #{$t-page-root}); }
 }
 .login-btn::after { border: none; }
 .login-btn--hover { opacity: 0.88; transform: scale(0.98); }
+.login-btn--disabled {
+  opacity: 0.45;
+  pointer-events: none;
+  box-shadow: none;
+}
 .login-btn-text {
   font-size: $mp-font-cta; font-weight: 700; color: var(--t-accent-text);
   letter-spacing: $mp-auth-btn-track;
@@ -376,4 +499,85 @@ page { background-color: var(--t-root, #{$t-page-root}); }
 .agree-text { flex: 1; font-size: $mp-font-legal; line-height: $mp-lh-legal; }
 .agree-grey { color: var(--t-text-3); }
 .agree-link { color: var(--t-accent); }
+
+.legal-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.48);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40rpx 32rpx;
+  box-sizing: border-box;
+}
+.legal-sheet {
+  width: 100%;
+  max-width: 680rpx;
+  max-height: 88vh;
+  background: var(--t-surface);
+  border-radius: 24rpx;
+  border: 1rpx solid var(--t-border);
+  box-shadow: var(--t-shadow-drop);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.legal-sheet__title {
+  flex-shrink: 0;
+  padding: 32rpx 32rpx 16rpx;
+  font-size: 34rpx;
+  font-weight: 700;
+  color: var(--t-text-1);
+  text-align: center;
+}
+.legal-sheet__scroll {
+  flex: 1;
+  min-height: 0;
+  height: 58vh;
+  max-height: 58vh;
+  width: 100%;
+  box-sizing: border-box;
+}
+.legal-sheet__inner {
+  padding: 8rpx 32rpx 24rpx;
+}
+.legal-sheet__text {
+  font-size: 28rpx;
+  line-height: 1.65;
+  color: var(--t-text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.legal-sheet__footer {
+  flex-shrink: 0;
+  padding: 16rpx 32rpx calc(16rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid var(--t-border);
+}
+.legal-sheet__btn {
+  width: 100%;
+  height: 88rpx;
+  line-height: 88rpx;
+  border-radius: 16rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+  border: none;
+  background: linear-gradient(135deg, var(--t-accent-from), var(--t-accent-to));
+  color: var(--t-accent-text);
+}
+.legal-sheet__btn::after {
+  border: none;
+}
+.legal-sheet__btn--disabled {
+  opacity: 0.45;
+  background: var(--t-surface);
+  color: var(--t-text-3);
+  font-weight: 600;
+}
+.legal-sheet__btn--hover:not(.legal-sheet__btn--disabled) {
+  opacity: 0.9;
+}
 </style>

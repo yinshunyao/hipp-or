@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import asyncio
 import json
 import random
+import re
 
 from datetime import datetime
 
@@ -21,26 +23,51 @@ from .inbox_order import order_archived_inbox_pairs, sort_session_pairs_by_recen
 from .session_display import mp_ui_session_title
 from .archive_context import format_archive_topic_context
 from .human_support import pick_random_human_staff_user_id
+from .attachments import (
+    dumps_attachments,
+    normalize_attachment_dicts,
+    preview_for_user,
+    resolve_query_and_store,
+    to_dify_remote_files,
+    use_dify_local_file,
+)
 from .dify_client import (
     DifyStreamAccumulator,
     extract_conversation_name_from_chat_response,
     fetch_dify_conversation_name,
+    generate_dify_conversation_name,
     iter_dify_chat_stream,
     parse_topic_finished_from_raw_answer,
     rewrite_sse_answer_line,
     send_chat_message_blocking,
     strip_finish_status_prefix,
+    summarize_session_title,
+    upload_file_to_dify,
+    usage_total_tokens,
     StreamAnswerPrefixFilter,
 )
+import httpx
 
-AGENT_UNAVAILABLE_CODE = 46001
-TOPIC_CLOSED_CODE = 46002
-SCENE_AGENT_UNAVAILABLE_CODE = 46003
-MP_GUEST_TRIAL_EXHAUSTED_CODE = 46004
+from apps.mp_chat.biz_codes import (
+    AGENT_UNAVAILABLE_CODE,
+    BALANCE_INSUFFICIENT_CODE,
+    BALANCE_INSUFFICIENT_MSG,
+    MP_GUEST_TRIAL_EXHAUSTED_CODE,
+    MP_GUEST_TRIAL_EXHAUSTED_MSG,
+    SCENE_AGENT_UNAVAILABLE_CODE,
+    SESSION_FEE_CHECK_FAILED_CODE,
+    SESSION_FEE_CHECK_FAILED_MSG,
+    SESSION_FEE_NO_PHONE_MSG,
+    TOPIC_CLOSED_CODE,
+)
+
+_TITLE_REPAIR_INFLIGHT: set[int] = set()
+_TITLE_REPAIR_TASKS: set[asyncio.Task] = set()
 # 访客在「需求分析」「商业评估」各自可完成的已归档话题上限（按 service_type 分别计数，非两场景合计）
 GUEST_SCENE_TRIAL_ARCHIVES_MAX = 2
 GUEST_QUOTA_SERVICE_TYPES = frozenset({"需求分析", "商业评估"})
 MP_GUEST_USER_TYPE = "mp_guest"
+ENTITLEMENT_USER_TYPE = "entitlement"
 
 
 def _session_update_ts(sess: models.VadminChatSession) -> float:
@@ -53,11 +80,96 @@ def _session_update_ts(sess: models.VadminChatSession) -> float:
         return 0.0
 
 
+async def _first_user_content_map(db: AsyncSession, session_ids: list[int]) -> dict[int, str]:
+    if not session_ids:
+        return {}
+    r = await db.execute(
+        select(models.VadminChatMessage.session_id, models.VadminChatMessage.content)
+        .where(
+            models.VadminChatMessage.session_id.in_(session_ids),
+            models.VadminChatMessage.is_delete == false(),
+            models.VadminChatMessage.role == "user",
+        )
+        .order_by(models.VadminChatMessage.id.asc())
+    )
+    found: dict[int, str] = {}
+    for sid, content in r.all():
+        if sid not in found and content:
+            found[int(sid)] = str(content)
+    return found
+
+
+async def _first_user_content(db: AsyncSession, session_id: int) -> str:
+    r = await db.execute(
+        select(models.VadminChatMessage.content)
+        .where(
+            models.VadminChatMessage.session_id == session_id,
+            models.VadminChatMessage.is_delete == false(),
+            models.VadminChatMessage.role == "user",
+        )
+        .order_by(models.VadminChatMessage.id.asc())
+        .limit(1)
+    )
+    return str(r.scalar_one_or_none() or "")
+
+
 def _preview(text: str, max_len: int = 80) -> str:
     t = (text or "").strip().replace("\n", " ")
     if len(t) <= max_len:
         return t
     return t[: max_len - 1] + "…"
+
+
+def _is_default_session_title(session_title: str | None, agent_name_snapshot: str | None) -> bool:
+    title = (session_title or "").strip()
+    snap = (agent_name_snapshot or "").strip()
+    if not title:
+        return True
+    return bool(snap) and title == snap
+
+
+def _usable_generated_name(name: str | None, agent_name_snapshot: str | None, user_query: str) -> bool:
+    text = (name or "").strip()
+    if not text or len(text) > 40:
+        return False
+    low = text.lower()
+    if low in {"new conversation", "new chat", "新对话"}:
+        return False
+    snap = (agent_name_snapshot or "").strip()
+    if snap and text == snap:
+        return False
+    query = (user_query or "").strip()
+    if query and text == query:
+        return False
+    return True
+
+
+def _is_excerpt_title(title: str | None, user_query: str | None) -> bool:
+    """标题只是用户原文的开头，而不是概括。"""
+    text = (title or "").strip()
+    query = re.sub(r"\s+", " ", (user_query or "").strip())
+    if not text or not query:
+        return False
+    if text.startswith("#") or text.endswith("…"):
+        return True
+    bare = text.strip()
+    if len(bare) >= 12 and (query.startswith(bare) or query.replace(" ", "").startswith(bare.replace(" ", ""))):
+        return True
+    return False
+
+
+def _title_should_replace(title: str | None, agent_name_snapshot: str | None, user_query: str | None) -> bool:
+    text = (title or "").strip()
+    if _is_default_session_title(title, agent_name_snapshot):
+        return True
+    if text in {"新对话", "对话"}:
+        return True
+    return _is_excerpt_title(text, user_query)
+
+
+def _cancel_task(task: asyncio.Task | None) -> None:
+    if task is not None and not task.done():
+        task.cancel()
 
 
 def _title_for_archived_topic_fallback(session_title: str, agent_name_snapshot: str | None, user_query: str) -> str:
@@ -82,27 +194,103 @@ async def _resolve_session_display_title(
     dify_user: str,
     topic_just_finished: bool,
     blocking_response: dict | None = None,
+    pending_summary: asyncio.Task | None = None,
 ) -> str:
     """
-    会话列表展示标题：始终优先 Dify 会话 `name`。
-    1) blocking 响应体中的 name（若有）
-    2) GET /v1/conversations 分页匹配 id 后的 data[].name
-    3) 话题刚结束仍无时：短回退（非长文用户 query）
-    4) 否则保持原 session_title（例如仍为智能体默认名，待下轮同步）
+    会话列表展示标题。用户已改过、或已经生成过的标题保持不变。
+    仍是智能体默认名，或只是用户原文开头时，重新生成：
+    1) blocking 响应体中的 name（若有，且不是原文开头）
+    2) GET /v1/conversations 的 data[].name
+    3) POST /conversations/{id}/name 自动起名
+    4) 另请模型根据对话概括一个短标题
     """
-    if blocking_response:
-        n = extract_conversation_name_from_chat_response(blocking_response)
-        if n:
-            return n[:255]
-    if conversation_id:
-        dify_name = await fetch_dify_conversation_name(
-            api_server, app_key, conversation_id, dify_user
-        )
-        if dify_name:
-            return dify_name[:255]
+    if not _title_should_replace(session_title, agent_name_snapshot, user_query):
+        _cancel_task(pending_summary)
+        return (session_title or "")[:255]
+
+    def accept(name: str | None) -> str | None:
+        if not _usable_generated_name(name, agent_name_snapshot, user_query):
+            return None
+        if _is_excerpt_title(name, user_query):
+            return None
+        return (name or "")[:255]
+
+    already_excerpt = _is_excerpt_title(session_title, user_query)
+    if not already_excerpt:
+        if blocking_response:
+            picked = accept(extract_conversation_name_from_chat_response(blocking_response))
+            if picked:
+                _cancel_task(pending_summary)
+                return picked
+        if conversation_id:
+            picked = accept(await fetch_dify_conversation_name(api_server, app_key, conversation_id, dify_user))
+            if picked:
+                _cancel_task(pending_summary)
+                return picked
+            picked = accept(await generate_dify_conversation_name(api_server, app_key, conversation_id, dify_user))
+            if picked:
+                _cancel_task(pending_summary)
+                return picked
+    if pending_summary is not None:
+        try:
+            summarized = await pending_summary
+        except Exception:
+            summarized = None
+        picked = accept(summarized if isinstance(summarized, str) else None)
+        if picked:
+            return picked
+    elif (user_query or "").strip() and api_server and app_key:
+        picked = accept(await summarize_session_title(api_server, app_key, dify_user, user_query))
+        if picked:
+            return picked
+    current = (session_title or "").strip()
+    if current and not _title_should_replace(current, agent_name_snapshot, user_query):
+        return current[:255]
     if topic_just_finished:
-        return _title_for_archived_topic_fallback(session_title, agent_name_snapshot, user_query)
-    return (session_title or "")[:255]
+        fallback = _title_for_archived_topic_fallback(session_title, agent_name_snapshot, user_query)
+        if not _is_excerpt_title(fallback, user_query):
+            return fallback[:255]
+    return current[:255] or "新对话"
+
+
+async def _repair_titles_background(user_id: int, session_ids: list[int]) -> None:
+    try:
+        async with session_factory() as db:
+            async with db.begin():
+                r = await db.execute(
+                    select(models.VadminChatSession, agent_models.VadminAgent)
+                    .outerjoin(
+                        agent_models.VadminAgent,
+                        models.VadminChatSession.agent_id == agent_models.VadminAgent.id,
+                    )
+                    .where(
+                        models.VadminChatSession.id.in_(session_ids),
+                        models.VadminChatSession.user_id == user_id,
+                        models.VadminChatSession.is_delete == false(),
+                    )
+                )
+                first_map = await _first_user_content_map(db, session_ids)
+                for sess, ag in r.all():
+                    query = first_map.get(sess.id) or ""
+                    if not ag or not query or not _title_should_replace(sess.title, sess.agent_name_snapshot, query):
+                        continue
+                    new_title = await _resolve_session_display_title(
+                        session_title=sess.title,
+                        agent_name_snapshot=sess.agent_name_snapshot,
+                        user_query=query,
+                        conversation_id=sess.dify_conversation_id,
+                        api_server=ag.api_server,
+                        app_key=ag.app_key,
+                        dify_user=f"user-{user_id}",
+                        topic_just_finished=False,
+                    )
+                    if new_title and not _title_should_replace(new_title, sess.agent_name_snapshot, query):
+                        sess.title = new_title
+    except Exception:
+        return
+    finally:
+        for sid in session_ids:
+            _TITLE_REPAIR_INFLIGHT.discard(sid)
 
 
 class ChatSessionDal(DalBase):
@@ -184,20 +372,8 @@ class ChatSessionDal(DalBase):
             )
         chosen = random.choice(agents)
 
-        open_sess_sql = (
-            select(self.model)
-            .where(
-                self.model.is_delete == false(),
-                self.model.session_kind == "dify",
-                self.model.user_id == user_id,
-                self.model.agent_id == chosen.id,
-                self.model.is_topic_closed == false(),
-            )
-            .order_by(self.model.update_datetime.desc(), self.model.id.desc())
-            .limit(1)
-        )
-        rr = await self.db.execute(open_sess_sql)
-        open_sess = rr.scalar_one_or_none()
+        await self._retire_empty_prepaid_open_sessions(user_id, chosen.id)
+        open_sess = await self._latest_reusable_open_session(user_id, chosen.id)
 
         guest_scene_archived_count = 0
         guest_need_login = False
@@ -207,6 +383,19 @@ class ChatSessionDal(DalBase):
             guest_need_login = bool(
                 guest_scene_archived_count >= guest_scene_trial_limit and open_sess is None
             )
+        if user and getattr(user, "user_type", "") == ENTITLEMENT_USER_TYPE:
+            from apps.commerce import service as commerce
+            from apps.commerce.biz_codes import (
+                ENTITLEMENT_SCENE_DENIED_CODE,
+                ENTITLEMENT_SCENE_DENIED_MSG,
+            )
+
+            if service_type != commerce.SERVICE_TYPE_REQUIREMENT:
+                raise CustomException(
+                    ENTITLEMENT_SCENE_DENIED_MSG,
+                    code=ENTITLEMENT_SCENE_DENIED_CODE,
+                )
+            await commerce.assert_entitlement_may_use_agent(self.db, user, service_type)
 
         return schemas.SceneAgentOut(
             service_type=service_type,
@@ -280,9 +469,20 @@ class ChatSessionDal(DalBase):
         n = await self._count_guest_scene_archived_sessions(user_id, st)
         if n >= GUEST_SCENE_TRIAL_ARCHIVES_MAX:
             raise CustomException(
-                "本场景免费体验次数已用完。请打开底部「我的」Tab，进入登录页完成登录后再继续使用。",
+                MP_GUEST_TRIAL_EXHAUSTED_MSG,
                 code=MP_GUEST_TRIAL_EXHAUSTED_CODE,
             )
+
+    async def assert_entitlement_sendable(
+        self, user: VadminUser, agent: agent_models.VadminAgent
+    ) -> None:
+        if getattr(user, "user_type", "") != ENTITLEMENT_USER_TYPE:
+            return
+        from apps.commerce import service as commerce
+
+        await commerce.assert_entitlement_may_use_agent(
+            self.db, user, (agent.service_type or "").strip()
+        )
 
     async def get_session_for_participant(self, session_id: int, user_id: int) -> models.VadminChatSession:
         sess = await self.get_data(
@@ -453,9 +653,31 @@ class ChatSessionDal(DalBase):
 
         return schemas.InboxOut(items=items)
 
-    async def _build_inbox_archived_session_only(self, user_id: int, q: str | None) -> schemas.InboxOut:
-        """对话 Tab：`kind=session`，仅已归档话题（is_topic_closed=true），无 kind=agent 行。"""
+    async def _build_inbox_archived_session_only(
+        self,
+        user_id: int,
+        q: str | None,
+        *,
+        include_open: bool = False,
+    ) -> schemas.InboxOut:
+        """
+        对话 Tab：`kind=session`，无 kind=agent 行。
+        默认仅已归档话题。`include_open` 时额外包含已有用户或助手消息、但尚未归档的会话。
+        """
         kw = f"%{(q or '').strip()}%" if q and q.strip() else None
+        dify_cond = and_(self.model.session_kind == "dify", self.model.is_topic_closed == true())
+        if include_open:
+            has_talk = exists(
+                select(1).where(
+                    models.VadminChatMessage.session_id == self.model.id,
+                    models.VadminChatMessage.is_delete == false(),
+                    models.VadminChatMessage.role.in_(("user", "assistant")),
+                )
+            )
+            dify_cond = and_(
+                self.model.session_kind == "dify",
+                or_(self.model.is_topic_closed == true(), has_talk),
+            )
 
         sess_sql: Select = (
             select(self.model, agent_models.VadminAgent)
@@ -463,10 +685,7 @@ class ChatSessionDal(DalBase):
             .where(
                 self.model.user_id == user_id,
                 self.model.is_delete == false(),
-                or_(
-                    and_(self.model.session_kind == "dify", self.model.is_topic_closed == true()),
-                    self.model.session_kind == "human_support",
-                ),
+                or_(dify_cond, self.model.session_kind == "human_support"),
             )
         )
         if kw:
@@ -481,10 +700,45 @@ class ChatSessionDal(DalBase):
         r = await self.db.execute(sess_sql)
         pairs = list(r.all())
         ordered = order_archived_inbox_pairs(pairs)
+        if include_open:
+            await self._repair_session_titles(ordered, user_id)
         items: list[schemas.InboxItem] = []
         for sess, ag in ordered:
             items.append(await self._pair_to_inbox_item(sess, ag))
         return schemas.InboxOut(items=items)
+
+    async def _repair_session_titles(self, pairs, user_id: int) -> None:
+        """挑出仍需概括的标题，放到请求之外改写，避免列表接口等待模型。"""
+        pending = [
+            sess.id
+            for sess, ag in pairs
+            if getattr(sess, "session_kind", "dify") == "dify"
+            and ag is not None
+            and getattr(ag, "api_server", None)
+            and getattr(ag, "app_key", None)
+            and sess.id not in _TITLE_REPAIR_INFLIGHT
+        ]
+        if not pending:
+            return
+        first_map = await _first_user_content_map(self.db, pending)
+        targets: list[int] = []
+        for sess, _ag in pairs:
+            if sess.id not in first_map:
+                continue
+            query = first_map.get(sess.id) or ""
+            if not query or not _title_should_replace(sess.title, sess.agent_name_snapshot, query):
+                continue
+            if sess.id in _TITLE_REPAIR_INFLIGHT:
+                continue
+            targets.append(sess.id)
+            if len(targets) >= 2:
+                break
+        if not targets:
+            return
+        _TITLE_REPAIR_INFLIGHT.update(targets)
+        task = asyncio.create_task(_repair_titles_background(user_id, targets))
+        _TITLE_REPAIR_TASKS.add(task)
+        task.add_done_callback(_TITLE_REPAIR_TASKS.discard)
 
     async def _pair_to_staff_inbox_item(
         self,
@@ -537,9 +791,18 @@ class ChatSessionDal(DalBase):
             items.append(await self._pair_to_staff_inbox_item(sess, u))
         return schemas.InboxOut(items=items)
 
-    async def build_inbox(self, user_id: int, q: str | None, *, kind: str | None = None) -> schemas.InboxOut:
+    async def build_inbox(
+        self,
+        user_id: int,
+        q: str | None,
+        *,
+        kind: str | None = None,
+        include_open: bool = False,
+    ) -> schemas.InboxOut:
         if kind == "session":
-            return await self._build_inbox_archived_session_only(user_id, q)
+            return await self._build_inbox_archived_session_only(
+                user_id, q, include_open=include_open
+            )
         if kind == "staff":
             return await self._build_inbox_staff(user_id, q)
         return await self._build_inbox_merged(user_id, q)
@@ -604,6 +867,62 @@ class ChatSessionDal(DalBase):
             )
         return schemas.ArchivedTopicsPageOut(items=items, has_more=has_more)
 
+    @staticmethod
+    def _session_has_talk_exists():
+        """未删除的用户/助手消息存在性子查询（关联当前会话行）。"""
+        return exists(
+            select(1).where(
+                models.VadminChatMessage.session_id == models.VadminChatSession.id,
+                models.VadminChatMessage.is_delete == false(),
+                models.VadminChatMessage.role.in_(("user", "assistant")),
+            )
+        )
+
+    async def _retire_empty_prepaid_open_sessions(self, user_id: int, agent_id: int) -> None:
+        """
+        旧版「创建即扣」遗留空壳：未结束、已扣费、无用户/助手消息。
+        软删以免场景页 / 新会话路径再次捡起。
+        """
+        has_talk = self._session_has_talk_exists()
+        sql = select(self.model.id).where(
+            self.model.is_delete == false(),
+            self.model.session_kind == "dify",
+            self.model.user_id == user_id,
+            self.model.agent_id == agent_id,
+            self.model.is_topic_closed == false(),
+            self.model.fee_charged == true(),
+            ~has_talk,
+        )
+        r = await self.db.execute(sql)
+        ids = [int(row[0]) for row in r.all()]
+        if ids:
+            await self.delete_datas(ids, v_soft=True)
+
+    async def _latest_reusable_open_session(
+        self, user_id: int, agent_id: int
+    ) -> models.VadminChatSession | None:
+        """进行中会话：有交互的优先；否则仅未扣费空草稿。"""
+        has_talk = self._session_has_talk_exists()
+        sql = (
+            select(self.model)
+            .where(
+                self.model.is_delete == false(),
+                self.model.session_kind == "dify",
+                self.model.user_id == user_id,
+                self.model.agent_id == agent_id,
+                self.model.is_topic_closed == false(),
+                or_(has_talk, self.model.fee_charged == false()),
+            )
+            .order_by(
+                has_talk.desc(),
+                self.model.update_datetime.desc(),
+                self.model.id.desc(),
+            )
+            .limit(1)
+        )
+        rr = await self.db.execute(sql)
+        return rr.scalar_one_or_none()
+
     async def create_session(self, user_id: int, agent_id: int) -> dict:
         ag = await self.get_published_agent(agent_id)
         u = await self.db.get(VadminUser, user_id)
@@ -613,9 +932,26 @@ class ChatSessionDal(DalBase):
                 n = await self._count_guest_scene_archived_sessions(user_id, st)
                 if n >= GUEST_SCENE_TRIAL_ARCHIVES_MAX:
                     raise CustomException(
-                        "本场景免费体验次数已用完。请打开底部「我的」Tab，进入登录页完成登录后再继续使用。",
+                        MP_GUEST_TRIAL_EXHAUSTED_MSG,
                         code=MP_GUEST_TRIAL_EXHAUSTED_CODE,
                     )
+        if u and getattr(u, "user_type", "") == ENTITLEMENT_USER_TYPE:
+            from apps.commerce import service as commerce
+
+            ent = await commerce.assert_entitlement_may_use_agent(
+                self.db, u, (ag.service_type or "").strip()
+            )
+            if ent.bound_session_id:
+                existing = await self.get_data(
+                    ent.bound_session_id,
+                    v_where=[self.model.user_id == user_id, self.model.is_delete == false()],
+                    v_return_none=True,
+                )
+                if existing and not bool(existing.is_topic_closed):
+                    return await self.session_detail(existing.id, user_id)
+        # 建空会话前即校验余额，避免用户写完长文再因 46005 失败
+        await self.assert_user_session_fee_affordable(user_id, u)
+        await self._retire_empty_prepaid_open_sessions(user_id, agent_id)
         title = ag.name or f"智能体 #{ag.id}"
         obj = self.model(
             user_id=user_id,
@@ -628,9 +964,117 @@ class ChatSessionDal(DalBase):
             is_pinned=False,
             dify_conversation_id=None,
             is_topic_closed=False,
+            fee_charged=False,
         )
         await self.flush(obj)
+        if u and getattr(u, "user_type", "") == ENTITLEMENT_USER_TYPE:
+            from apps.commerce import service as commerce
+
+            await commerce.bind_session(self.db, user_id, obj.id)
         return await self.session_detail(obj.id, user_id)
+
+    async def assert_user_session_fee_affordable(
+        self, user_id: int, user: VadminUser | None = None
+    ) -> None:
+        """校验用户余额足以支付一次会话咨询费（不预扣、不依赖具体 session）。"""
+        u = user
+        if u is None:
+            u = await self.db.get(VadminUser, user_id)
+        if u and getattr(u, "user_type", "") in (MP_GUEST_USER_TYPE, ENTITLEMENT_USER_TYPE):
+            return
+        from decimal import Decimal
+
+        from apps.vadmin.billing import service as billing_service
+        from utils import hipp_manager
+
+        amount, _ = await billing_service.resolve_session_fee(self.db, user_id)
+        if not amount or amount <= 0:
+            return
+        phone = str(getattr(u, "telephone", None) or "").strip() if u else ""
+        if not phone:
+            raise CustomException(
+                SESSION_FEE_NO_PHONE_MSG,
+                code=SESSION_FEE_CHECK_FAILED_CODE,
+            )
+        try:
+            data = hipp_manager.s2s_balance(phone=phone)
+            bal = Decimal(str((data or {}).get("balance") or "0"))
+        except hipp_manager.ManagerError as exc:
+            raise CustomException(
+                str(exc) or SESSION_FEE_CHECK_FAILED_MSG,
+                code=SESSION_FEE_CHECK_FAILED_CODE,
+            ) from exc
+        if bal < amount:
+            raise CustomException(
+                BALANCE_INSUFFICIENT_MSG,
+                code=BALANCE_INSUFFICIENT_CODE,
+            )
+
+    async def assert_dify_session_fee_affordable(
+        self, sess: models.VadminChatSession, user: VadminUser | None = None
+    ) -> None:
+        """发送前校验余额足以支付本话题结束后的咨询费（不预扣）。"""
+        if getattr(sess, "session_kind", "dify") != "dify":
+            return
+        if bool(getattr(sess, "fee_charged", False)):
+            return
+        await self.assert_user_session_fee_affordable(sess.user_id, user)
+
+    async def charge_dify_session_fee_on_topic_close(
+        self, sess: models.VadminChatSession, user: VadminUser | None = None
+    ) -> bool:
+        """话题结束时扣一次咨询费。成功返回 True；失败不抛错，保持 fee_charged=false。"""
+        if getattr(sess, "session_kind", "dify") != "dify":
+            return True
+        if bool(getattr(sess, "fee_charged", False)):
+            return True
+        if not bool(getattr(sess, "is_topic_closed", False)):
+            return False
+        u = user
+        if u is None:
+            u = await self.db.get(VadminUser, sess.user_id)
+        if u and getattr(u, "user_type", "") == MP_GUEST_USER_TYPE:
+            sess.fee_charged = True
+            await self.flush(sess)
+            return True
+        if u and getattr(u, "user_type", "") == ENTITLEMENT_USER_TYPE:
+            from apps.commerce import service as commerce
+
+            await commerce.mark_used_on_topic_close(self.db, sess.id, sess.user_id)
+            sess.fee_charged = True
+            await self.flush(sess)
+            return True
+        from apps.vadmin.billing import service as billing_service
+        from utils import hipp_manager
+
+        amount, _ = await billing_service.resolve_session_fee(self.db, sess.user_id)
+        if not amount or amount <= 0:
+            sess.fee_charged = True
+            await self.flush(sess)
+            return True
+        phone = str(getattr(u, "telephone", None) or "").strip() if u else ""
+        if not phone:
+            return False
+        try:
+            hipp_manager.s2s_deduct(
+                phone=phone,
+                amount=amount,
+                ref_id=f"or_session_{sess.id}",
+                remark=f"话题咨询结束 session={sess.id}",
+                product="or",
+                biz_type="consume_session",
+            )
+        except hipp_manager.ManagerError:
+            return False
+        sess.fee_charged = True
+        await self.flush(sess)
+        return True
+
+    async def ensure_dify_session_fee(
+        self, sess: models.VadminChatSession, user: VadminUser | None = None
+    ) -> None:
+        """兼容旧名：仅在话题已结束时尝试扣费。"""
+        await self.charge_dify_session_fee_on_topic_close(sess, user)
 
     async def create_or_get_human_support_session(self, user_id: int, source_session_id: int) -> dict:
         u0 = await self.db.get(VadminUser, user_id)
@@ -638,6 +1082,16 @@ class ChatSessionDal(DalBase):
             raise CustomException(
                 "请先打开底部「我的」Tab 完成登录后再使用人工客服。",
                 code=MP_GUEST_TRIAL_EXHAUSTED_CODE,
+            )
+        if u0 and getattr(u0, "user_type", "") == ENTITLEMENT_USER_TYPE:
+            from apps.commerce.biz_codes import (
+                ENTITLEMENT_SCENE_DENIED_CODE,
+                ENTITLEMENT_SCENE_DENIED_MSG,
+            )
+
+            raise CustomException(
+                ENTITLEMENT_SCENE_DENIED_MSG,
+                code=ENTITLEMENT_SCENE_DENIED_CODE,
             )
         src = await self.get_data(
             source_session_id,
@@ -747,6 +1201,11 @@ class ChatSessionDal(DalBase):
         sk = getattr(sess, "session_kind", None) or "dify"
         if sk == "human_support":
             return await self._session_detail_human(sess, user_id)
+        # 已结束未扣费：打开详情时补扣（覆盖流式路径抖动或历史话题）
+        if bool(getattr(sess, "is_topic_closed", False)) and not bool(
+            getattr(sess, "fee_charged", False)
+        ):
+            await self.charge_dify_session_fee_on_topic_close(sess)
         status = self.resolve_agent_status(sess.agent)
         out = schemas.SessionDetailOut.model_validate(sess, from_attributes=True).model_copy(
             update={
@@ -832,6 +1291,68 @@ class ChatSessionDal(DalBase):
         )
         return out.model_dump()
 
+    async def ensure_share_token(self, session_id: int, user_id: int) -> str:
+        import secrets
+
+        sess = await self.assert_session_owner_customer(session_id, user_id)
+        if not sess.is_topic_closed:
+            raise CustomException("只有已完成的话题可以分享")
+        if sess.share_token:
+            return sess.share_token
+        sess.share_token = secrets.token_urlsafe(18)
+        await self.flush(sess)
+        return sess.share_token
+
+    async def clear_share_token(self, session_id: int, user_id: int) -> None:
+        sess = await self.assert_session_owner_customer(session_id, user_id)
+        sess.share_token = None
+        await self.flush(sess)
+
+    async def public_share(self, token: str) -> dict:
+        sess = await self.get_data(
+            v_where=[self.model.share_token == (token or "").strip()],
+            v_return_none=True,
+        )
+        if not sess or sess.is_delete or not sess.is_topic_closed or not sess.share_token:
+            raise CustomException("分享不存在或已失效", code=404)
+        dal_m = ChatMessageDal(self.db)
+        rows = []
+        page = 1
+        total = 0
+        while len(rows) < 500:
+            datas, count = await dal_m.list_for_session(sess.id, page, 200)
+            total = count or 0
+            if not datas:
+                break
+            rows.extend(datas)
+            if len(rows) >= total:
+                break
+            page += 1
+        messages = []
+        for item in rows[:500]:
+            if isinstance(item, dict):
+                role = item.get("role") or ""
+                content = item.get("content") or ""
+                created = item.get("create_datetime")
+            else:
+                role = item.role
+                content = item.content or ""
+                created = item.create_datetime
+            if isinstance(item, dict):
+                atts = item.get("attachments")
+            else:
+                atts = getattr(item, "attachments", None)
+            messages.append(
+                schemas.ShareMessageOut(
+                    role=role,
+                    content=content,
+                    attachments=atts,
+                    create_datetime=created,
+                )
+            )
+        title = (sess.title or "").strip() or "对话"
+        return schemas.ShareOut(title=title, messages=messages).model_dump()
+
     async def delete_session(self, session_id: int, user_id: int) -> None:
         await self.assert_session_owner_customer(session_id, user_id)
         await self.delete_datas([session_id], v_soft=True)
@@ -877,6 +1398,45 @@ class ChatMessageDal(DalBase):
             "topic_closed": False,
         }
 
+    async def _build_dify_files(
+        self,
+        api_server: str,
+        app_key: str,
+        dify_user: str,
+        attachments: list[dict] | None,
+    ) -> list[dict] | None:
+        if not attachments:
+            return None
+        if not use_dify_local_file():
+            return to_dify_remote_files(attachments)
+        out: list[dict] = []
+        timeout = httpx.Timeout(60.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            for item in attachments:
+                url = item["url"]
+                try:
+                    resp = await client.get(url)
+                    resp.raise_for_status()
+                    content = resp.content
+                except httpx.HTTPError as e:
+                    raise CustomException(f"无法拉取附件: {e!s}") from e
+                file_id = await upload_file_to_dify(
+                    api_server,
+                    app_key,
+                    dify_user,
+                    filename=item.get("name") or "file",
+                    content=content,
+                    content_type=item.get("mime") or None,
+                )
+                out.append(
+                    {
+                        "type": item["type"],
+                        "transfer_method": "local_file",
+                        "upload_file_id": file_id,
+                    }
+                )
+        return out
+
     async def send_user_and_bot(
         self,
         db: AsyncSession,
@@ -884,22 +1444,49 @@ class ChatMessageDal(DalBase):
         agent: agent_models.VadminAgent,
         user_id: int,
         query: str,
+        files: list | None = None,
     ) -> dict:
+        attachments = normalize_attachment_dicts(files)
+        dify_query, store_content = resolve_query_and_store(query, attachments)
+        att_json = dumps_attachments(attachments)
         user_msg = models.VadminChatMessage(
             session_id=session.id,
             role="user",
-            content=query,
+            content=store_content,
+            attachments=att_json,
         )
         await ChatMessageDal(db).flush(user_msg)
+        session.last_message_preview = preview_for_user(store_content, attachments)
+        await ChatSessionDal(db).flush(session)
 
         dify_user = f"user-{user_id}"
-        data = await send_chat_message_blocking(
-            api_server=agent.api_server,
-            app_key=agent.app_key,
-            query=query,
-            dify_user=dify_user,
-            conversation_id=session.dify_conversation_id,
-        )
+        first_q = await _first_user_content(db, session.id)
+        title_task = None
+        title_seed = first_q or store_content
+        if _title_should_replace(session.title, session.agent_name_snapshot, title_seed):
+            title_task = asyncio.create_task(
+                summarize_session_title(
+                    agent.api_server,
+                    agent.app_key,
+                    dify_user,
+                    title_seed,
+                )
+            )
+        try:
+            dify_files = await self._build_dify_files(
+                agent.api_server, agent.app_key, dify_user, attachments
+            )
+            data = await send_chat_message_blocking(
+                api_server=agent.api_server,
+                app_key=agent.app_key,
+                query=dify_query,
+                dify_user=dify_user,
+                conversation_id=session.dify_conversation_id,
+                files=dify_files,
+            )
+        except Exception:
+            _cancel_task(title_task)
+            raise
         answer_raw = data.get("answer")
         if answer_raw is None or answer_raw == "":
             raise CustomException("Dify 未返回有效回答")
@@ -913,18 +1500,23 @@ class ChatMessageDal(DalBase):
         session.last_message_preview = _preview(answer)
         if topic_finished:
             session.is_topic_closed = True
+        session.token_usage = int(session.token_usage or 0) + usage_total_tokens(data)
         session.title = await _resolve_session_display_title(
             session_title=session.title,
             agent_name_snapshot=session.agent_name_snapshot,
-            user_query=query,
+            user_query=title_seed,
             conversation_id=conv_id,
             api_server=agent.api_server,
             app_key=agent.app_key,
             dify_user=dify_user,
             topic_just_finished=topic_finished,
             blocking_response=data,
+            pending_summary=title_task,
         )
-        await ChatSessionDal(db).flush(session)
+        dal_sess = ChatSessionDal(db)
+        await dal_sess.flush(session)
+        if topic_finished:
+            await dal_sess.charge_dify_session_fee_on_topic_close(session)
 
         bot_msg = models.VadminChatMessage(
             session_id=session.id,
@@ -932,6 +1524,12 @@ class ChatMessageDal(DalBase):
             content=answer,
         )
         await ChatMessageDal(db).flush(bot_msg)
+
+        if topic_finished:
+            from apps.mp_chat.media_cleanup import cleanup_session_media_after_topic_close
+
+            # 同事务可读刚 flush 的助手正文，避免异步会话看不到结题答案里的引用 URL
+            await cleanup_session_media_after_topic_close(db, int(session.id))
 
         return {
             "answer": answer,
@@ -950,21 +1548,51 @@ class ChatMessageDal(DalBase):
         app_key: str,
         user_id: int,
         query: str,
+        files: list | None = None,
     ):
         """
         先写入 user 消息，再将 Dify SSE yield 给客户端；流正常结束后落库 assistant 并更新会话。
         流式响应体在路由 return 之后才执行，因此落库使用独立 session，避免请求依赖事务结束后写入丢失。
         """
+        attachments = normalize_attachment_dicts(files)
+        dify_query, store_content = resolve_query_and_store(query, attachments)
+        att_json = dumps_attachments(attachments)
         async with session_factory() as stream_db:
             async with stream_db.begin():
                 user_msg = models.VadminChatMessage(
                     session_id=session_id_val,
                     role="user",
-                    content=query,
+                    content=store_content,
+                    attachments=att_json,
                 )
                 stream_db.add(user_msg)
+                await stream_db.execute(
+                    update(models.VadminChatSession)
+                    .where(models.VadminChatSession.id == session_id_val)
+                    .values(last_message_preview=preview_for_user(store_content, attachments))
+                )
 
         dify_user = f"user-{user_id}"
+        title_task = None
+        title_seed = store_content
+        async with session_factory() as read_db:
+            first_q = await _first_user_content(read_db, session_id_val)
+            title_seed = first_q or store_content
+            r0 = await read_db.execute(
+                select(models.VadminChatSession).where(
+                    models.VadminChatSession.id == session_id_val
+                )
+            )
+            sess_for_title = r0.scalar_one()
+            if _title_should_replace(sess_for_title.title, sess_for_title.agent_name_snapshot, title_seed):
+                title_task = asyncio.create_task(
+                    summarize_session_title(api_server, app_key, dify_user, title_seed)
+                )
+        try:
+            dify_files = await self._build_dify_files(api_server, app_key, dify_user, attachments)
+        except Exception:
+            _cancel_task(title_task)
+            raise
         acc = DifyStreamAccumulator()
         answer_filter = StreamAnswerPrefixFilter()
         stream_done = False
@@ -972,9 +1600,10 @@ class ChatMessageDal(DalBase):
             async for line in iter_dify_chat_stream(
                 api_server=api_server,
                 app_key=app_key,
-                query=query,
+                query=dify_query,
                 dify_user=dify_user,
                 conversation_id=dify_conversation_id_initial,
+                files=dify_files,
             ):
                 acc.feed_line(line)
                 out_line = rewrite_sse_answer_line(line, answer_filter)
@@ -983,10 +1612,10 @@ class ChatMessageDal(DalBase):
                 yield (out_line + "\n").encode("utf-8")
             stream_done = True
         except Exception:
+            _cancel_task(title_task)
             raise
-        if not stream_done:
-            return
-        if acc.error:
+        if not stream_done or acc.error:
+            _cancel_task(title_task)
             return
         raw_full = (acc.full_answer or "").strip()
         topic_finished = parse_topic_finished_from_raw_answer(raw_full)
@@ -994,26 +1623,32 @@ class ChatMessageDal(DalBase):
         if not answer:
             answer = "（无内容）"
         conv_id = acc.conversation_id or dify_conversation_id_initial
+        async with session_factory() as read_db:
+            first_q = await _first_user_content(read_db, session_id_val)
+            r0 = await read_db.execute(
+                select(models.VadminChatSession).where(
+                    models.VadminChatSession.id == session_id_val
+                )
+            )
+            sess_for_title = r0.scalar_one()
+            title_val = await _resolve_session_display_title(
+                session_title=sess_for_title.title,
+                agent_name_snapshot=sess_for_title.agent_name_snapshot,
+                user_query=first_q or store_content,
+                conversation_id=conv_id,
+                api_server=api_server,
+                app_key=app_key,
+                dify_user=dify_user,
+                topic_just_finished=topic_finished,
+                blocking_response=None,
+                pending_summary=title_task,
+            )
+            was_closed = bool(sess_for_title.is_topic_closed)
+            was_fee_charged = bool(getattr(sess_for_title, "fee_charged", False))
+            tokens = int(sess_for_title.token_usage or 0) + int(acc.total_tokens or 0)
         async with session_factory() as stream_db:
             async with stream_db.begin():
-                r = await stream_db.execute(
-                    select(models.VadminChatSession).where(
-                        models.VadminChatSession.id == session_id_val
-                    )
-                )
-                sess_row = r.scalar_one()
-                title_val = await _resolve_session_display_title(
-                    session_title=sess_row.title,
-                    agent_name_snapshot=sess_row.agent_name_snapshot,
-                    user_query=query,
-                    conversation_id=conv_id,
-                    api_server=api_server,
-                    app_key=app_key,
-                    dify_user=dify_user,
-                    topic_just_finished=topic_finished,
-                    blocking_response=None,
-                )
-                is_closed = bool(sess_row.is_topic_closed or topic_finished)
+                is_closed = bool(was_closed or topic_finished)
                 await stream_db.execute(
                     update(models.VadminChatSession)
                     .where(models.VadminChatSession.id == session_id_val)
@@ -1022,6 +1657,7 @@ class ChatMessageDal(DalBase):
                         last_message_preview=_preview(answer),
                         is_topic_closed=is_closed,
                         title=title_val,
+                        token_usage=tokens,
                     )
                 )
                 bot_msg = models.VadminChatMessage(
@@ -1030,5 +1666,19 @@ class ChatMessageDal(DalBase):
                     content=answer,
                 )
                 stream_db.add(bot_msg)
+        if topic_finished and not was_closed and not was_fee_charged:
+            async with session_factory() as fee_db:
+                async with fee_db.begin():
+                    r_fee = await fee_db.execute(
+                        select(models.VadminChatSession).where(
+                            models.VadminChatSession.id == session_id_val
+                        )
+                    )
+                    sess_fee = r_fee.scalar_one()
+                    await ChatSessionDal(fee_db).charge_dify_session_fee_on_topic_close(sess_fee)
+        if topic_finished and not was_closed:
+            from apps.mp_chat.media_cleanup import schedule_topic_media_cleanup
+
+            schedule_topic_media_cleanup(int(session_id_val))
         meta = {"event": "mp_topic", "topic_closed": topic_finished}
         yield (f"data: {json.dumps(meta, ensure_ascii=False)}\n\n").encode("utf-8")

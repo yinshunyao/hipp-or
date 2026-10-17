@@ -47,6 +47,11 @@ class VadminUser(BaseModel):
     is_wx_server_openid: Mapped[bool] = mapped_column(Boolean, default=False, comment="是否已有服务端微信平台openid")
     wx_nickname: Mapped[str | None] = mapped_column(String(128), nullable=True, comment="微信昵称")
     wx_avatar: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="微信头像")
+    must_set_password_without_old: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        comment="短信自助注册是否须无旧密码首次设密",
+    )
 
     roles: Mapped[set[VadminRole]] = relationship(secondary=vadmin_auth_user_roles)
     depts: Mapped[set[VadminDept]] = relationship(secondary=vadmin_auth_user_depts)

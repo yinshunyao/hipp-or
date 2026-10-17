@@ -42,7 +42,9 @@ from apps.vadmin.record.models import *
 from apps.vadmin.help.models import *
 from apps.vadmin.resource.models import *
 from apps.vadmin.agent_manager.models import *
+from apps.vadmin.billing.models import *
 from apps.mp_chat.models import *
+from apps.commerce.models import *
 
 # 修改配置中的参数
 target_metadata = Base.metadata

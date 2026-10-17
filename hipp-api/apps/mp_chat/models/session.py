@@ -35,6 +35,12 @@ class VadminChatSession(BaseModel):
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, comment="是否置顶")
     dify_conversation_id: Mapped[str | None] = mapped_column(String(255), nullable=True, comment="Dify conversation_id")
     is_topic_closed: Mapped[bool] = mapped_column(Boolean, default=False, comment="话题是否已结束（归档）")
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, comment="用户是否已把会话放进归档")
+    share_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True, comment="归档分享令牌")
+    token_usage: Mapped[int] = mapped_column(Integer, default=0, comment="累计 token 消耗")
+    fee_charged: Mapped[bool] = mapped_column(
+        Boolean, default=False, comment="是否已扣会话咨询费"
+    )
 
     # 无 DB 外键：ORM 用 foreign() 标注逻辑引用，便于 joinedload
     agent: Mapped[VadminAgent] = relationship(
@@ -50,6 +56,7 @@ class VadminChatMessage(BaseModel):
     session_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True, comment="会话 vadmin_chat_session.id")
     role: Mapped[str] = mapped_column(String(20), nullable=False, comment="user / assistant / system")
     content: Mapped[str] = mapped_column(Text, nullable=False, comment="消息内容")
+    attachments: Mapped[str | None] = mapped_column(Text, nullable=True, comment="附件 JSON 数组")
 
     session: Mapped["VadminChatSession"] = relationship(
         primaryjoin="foreign(VadminChatMessage.session_id) == VadminChatSession.id",
