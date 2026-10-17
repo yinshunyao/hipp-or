@@ -1,105 +1,153 @@
 # hipp-or
 
-hipp 需求对接工程：在 [kinit](https://github.com/vvandk/kinit) 基础上扩展 **管理端（hipp-admin）**、**后端 API（hipp-api）** 与 **小程序端（hipp-uni）**。
+智臻善算 **智能需求分析**：把需求说清楚，再谈怎么做。
 
-![对话列表.png](images/%E5%AF%B9%E8%AF%9D%E5%88%97%E8%A1%A8.png)  ![对话主界面](images/%E5%AF%B9%E8%AF%9D%E4%B8%BB%E7%95%8C%E9%9D%A2.png)
+在 [kinit](https://github.com/vvandk/kinit) 基础上扩展 **用户端（hipp-web / hipp-uni）**、**管理端（hipp-admin）** 与 **后端 API（hipp-api）**。对话经服务端接入 Dify；密钥不下发客户端。钱包与登录身份对接 **hipp-manager**（产品码 `or`）。
 
+![Web 登录](images/Web登录页.png)
 
-## 仓库结构（简要）
+![Web 需求会话](images/Web需求会话.png)
+
+现网用户端：`http://hipp.site/or/` · 管理端：`http://hipp.site/or/manager/`
+
+---
+
+## 仓库结构
 
 | 目录 | 说明 |
 |:---|:---|
-| `hipp-api/` | FastAPI 后端：认证、管理端业务、**小程序对话 `/mp/chat`** |
-| `hipp-admin/` | Web 管理端（Vue）：含 **智能客服 / Dify 智能体** 配置与上架 |
-| `hipp-uni/` | uni-app 小程序：默认进入 **对话收件箱**，调用后端对话接口 |
-| `hipp-web/` | Vue 用户端：登录、话题、需求/商业咨询与「我的」，复用 `/mp/chat` |
-| `doc/` | 需求（01-or）、设计（02-dr）、测试设计（03-tr）、运维（99-ops） |
+| `hipp-api/` | FastAPI：认证、管理业务、`/mp/chat` 对话、钱包透传、电商短链履约 |
+| `hipp-web/` | Vue 用户端（主交付）：登录、需求会话、附件、分享、账户充值 |
+| `hipp-admin/` | Vue 管理端：智能客服 / Dify、计费、人工客服、电商履约 |
+| `hipp-uni/` | uni-app 小程序：对话收件箱、场景咨询、「我的」 |
+| `doc/` | 需求 `01-or`、设计 `02-dr`、测试 `03-tr`、运维 `99-ops` |
 
 ---
 
-## 智能体服务（当前实现）
+## 用户端能力（hipp-web）
 
-智能体能力由 **管理端维护 Dify 接入信息** + **后端代持密钥并调用 Dify** + **小程序仅持会话与消息** 三部分组成。
+| 能力 | 说明 |
+|:---|:---|
+| 登录 | 短信 / 账号密码；协议与小程序一致；同站可与 `/mgr/` 等 SSO |
+| 需求会话 | 侧栏「最近 / 归档」；WebSocket 流式回复，失败回退 HTTP；深度思考可折叠 |
+| 附件 | 图片与文档上传（平台媒体）；粘贴 / 拖拽；业务错误带稳定 `code` |
+| 分享 / 归档 | 话题结束后可分享只读链接；可归档并查看 token 消耗 |
+| 账户 | `/wallet` 余额、充值（支付码弹窗）、订单与流水；会话按配置扣费 |
+| 短链次卡 | `/a/{token}` 免登录做 1 次需求分析（电商 / 线下出链） |
 
-### 1. 数据与配置（管理端 → 数据库）
+首版侧栏仅「需求」；商业评估由 `SHOW_BUSINESS_SCENE` 控制。开发：
 
-- 智能体记录在表 **`vadmin_agent`**（见设计文档），核心字段包括：
-  - **`api_server`**：Dify API 基准地址（须含 `/v1`，如 `https://your-dify/v1`）
-  - **`app_key`**：Dify 应用密钥（仅服务端使用，**不下发小程序**）
-  - **`status`**：`draft` / `published`；小程序侧仅对 **已上架（published）** 的智能体展示「可开聊」；未上架或已删除时历史会话只读
-- 管理端接口前缀：**`/vadmin/agent`**（列表、创建、编辑、测试连通、上架/下架等），详见 `doc/02-dr/03 智能客服管理/Dify智能体接入管理设计.md`。
-
-### 2. 小程序对话 API（后端）
-
-- 路由前缀：**`/mp/chat`**（在 `hipp-api/application/urls.py` 注册）
-- 鉴权：与现有移动端一致，请求头 **`Authorization: Bearer <access_token>`**（登录接口 `/auth/login` 等颁发的 JWT）
-- **安全约定**：`api_server`、`app_key` **仅由服务端在发消息时按 `agent_id` 从库中读取**；客户端不得传 Dify 地址或密钥
-- 与 Dify 交互：使用官方 Chat 应用 **`POST {api_server}/v1/chat-messages`**；主路径为 **`response_mode=streaming`**（SSE），同步 **`blocking`** 作为降级；Dify 侧用户标识为 **`user-{vadmin_auth_user.id}`**，多轮通过会话表中的 **`dify_conversation_id`** 对齐
-- 主要能力：收件箱合并、会话 CRUD、消息列表、**流式/非流式发送**；智能体不可发送时返回业务错误（如 **`46001`**），详见 `doc/02-dr/04 小程序对话/小程序用户对话设计.md`
-
-### 3. 小程序端（hipp-uni）
-
-- 默认进入：**`pages/chat/index`**（对话收件箱）；登录成功与路由守卫中已登录访问登录页时，统一重定向到该页
-- API 封装：`hipp-uni/common/request/api/mp/chat.js`（含微信小程序 `enableChunked` + `onChunkReceived` 解析 SSE 增量）
-- TabBar：当前为 **对话 / 工作台 / 我的**（已下线「首页」Tab）
-
-### 4. 环境变量（与 Dify 相关）
-
-在 `hipp-api/.env` 中可参考 `hipp-api/.env.example`：
-
-- **`HIPP_DIFY_HTTPX_VERIFY`**：后端调用 Dify 时是否校验 HTTPS 证书；内网自签可设为 `false`（仅建议开发/内网）
-
-### 5. 生产环境部署
-- supervisor 启动 Python API，安装：
 ```shell
-python3 -m pip install supervisor
+# 先启动 hipp-api（默认 http://127.0.0.1:46000）
+cd hipp-or/hipp-web
+npm install
+npm run dev
+# http://127.0.0.1:5173 ；Vite 将 /api 反代到 46000
 ```
-- Nginx（HTTPS）可参考如下仅本项目相关配置（按实际路径替换）：
+
+生产构建须带子路径，例如 `VITE_BASE_PATH=/or/`、`VITE_API_BASE=/or/api`（见运维说明，勿写死外网主机名）。
+
+---
+
+## 智能体与对话 API
+
+### 配置（管理端 → 库）
+
+表 **`vadmin_agent`**：`api_server`（须含 `/v1`）、`app_key`（仅服务端）、`status`（`draft` / `published`）。管理接口前缀 **`/vadmin/agent`**。
+
+![智能客服列表](images/智能客服列表.png)
+
+### 客户端对话
+
+- 前缀 **`/mp/chat`**；鉴权 `Authorization: Bearer <access_token>`
+- 客户端**不得**传 Dify 地址或密钥；服务端按 `agent_id` 读取并调用
+- 主路径：Dify Chat **`response_mode=streaming`**（SSE / WS）；`blocking` 降级
+- 业务失败返回稳定 **`code` + `message`**（如余额不足 `46005`），见 `doc/02-dr/04 小程序对话/mp_chat业务错误码.md`
+
+### 环境变量（摘录）
+
+见 `hipp-api/.env.example`：
+
+| 变量 | 用途 |
+|:---|:---|
+| `HIPP_DIFY_HTTPX_VERIFY` | 调 Dify 是否校验证书（内网自签可 `false`） |
+| `HIPP_MANAGER_BASE` / `HIPP_MANAGER_KEY` | 对接 hipp-manager（登录校验、钱包、媒体） |
+| `HIPP_OR_ACCESS_BASE` | 短链次卡对外基址（如 `https://hipp.site/or/a`） |
+
+---
+
+## 小程序（hipp-uni）
+
+- 默认进入对话收件箱；API 封装在 `hipp-uni/common/request/api/mp/chat.js`
+- TabBar：**对话 / 工作台 / 我的**
+- 与 Web 共用后端 `/mp/chat`；Web 独有能力（如 `include_open=1` 最近会话）不强制对齐小程序
+
+历史界面参考（小程序）：
+
+![对话列表](images/对话列表.png) ![对话主界面](images/对话主界面.png)
+
+---
+
+## 生产部署（路径约定）
+
+同站子路径部署时（示例现网）：
+
+| 入口 | 路径 |
+|:---|:---|
+| 用户端 | `/or/` → `hipp-web` 静态 |
+| 管理端 | `/or/manager/` → `hipp-admin` 静态 |
+| API | `/or/api/` → 本机 API（如 `46010`），Nginx 去掉前缀 |
+| 产品静态 | `/or/media/` → `hipp-api/static/` |
+| 对话附件 | 站点 `/media/...` → hipp-manager 公共媒体 |
+| WebSocket | 同 `/or/api/.../ws`，须 Upgrade |
+
+supervisor 启动 API（安装：`python3 -m pip install supervisor`）。Nginx 片段示意（按实际路径替换）：
+
 ```nginx
-server {
-    listen 443 ssl http2;
-    server_name <your-domain>;
+# 用户端
+location /or/ {
+    alias /data/or/hipp-web/;
+    try_files $uri $uri/ /or/index.html;
+}
 
-    ssl_certificate /etc/nginx/cert.pem;
-    ssl_certificate_key /etc/nginx/key.key;
-    ssl_protocols TLSv1.2 TLSv1.3;
+# 管理端
+location /or/manager/ {
+    alias /data/or/hipp-admin/;
+    try_files $uri $uri/ /or/manager/index.html;
+}
 
-    # hipp-admin 前端（管理端）
-    location /manager/ {
-        alias /home/dist/;
-        try_files $uri $uri/ /manager/index.html;
-    }
+location /or/media/ {
+    alias /data/or/hipp-api/static/;
+    expires 30d;
+}
 
-    # hipp-api 静态媒体文件
-    location /media/ {
-        alias /home/hipp-or/hipp-api/static/;
-        expires 30d;
-        add_header Cache-Control "public, immutable";
-    }
-
-    # hipp-api 反向代理（示例：supervisor 启动在 46000 端口）
-    location /api/ {
-        proxy_pass http://127.0.0.1:46000/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
+location /or/api/ {
+    proxy_pass http://127.0.0.1:46010/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
 }
 ```
 
+更完整的现网步骤见运维侧部署说明（勿把密钥写进本 README）。
+
 ---
 
-## 详细文档索引
+## 文档索引
 
 | 主题 | 路径 |
 |:---|:---|
-| Dify 智能体管理（管理端） | `doc/02-dr/03 智能客服管理/Dify智能体接入管理设计.md` |
-| 小程序用户对话（含 `/mp/chat` 与 Dify 流式） | `doc/02-dr/04 小程序对话/小程序用户对话设计.md` |
-| 测试设计 | `doc/03-tr/03 智能客服管理/`、`doc/03-tr/04 小程序对话/` |
+| Web 用户端 | `doc/02-dr/06 Web端/Web用户端设计.md` |
+| 个人资金账户 | `doc/02-dr/06 Web端/个人资金账户设计.md` |
+| 电商短链次卡 | `doc/02-dr/06 Web端/电商短链次卡设计.md` |
+| Dify 智能体管理 | `doc/02-dr/03 智能客服管理/Dify智能体接入管理设计.md` |
+| 对话与流式 | `doc/02-dr/04 小程序对话/小程序用户对话设计.md` |
+| 多模态附件 | `doc/02-dr/04 小程序对话/多模态附件与语音输入设计.md` |
+| 测试设计 | `doc/03-tr/03 智能客服管理/`、`04 小程序对话/`、`06 Web端/` |
 
 ---
 
