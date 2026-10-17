@@ -1,9 +1,81 @@
 # 发布草稿（kinit）
 
+## 2026-10-16（hipp-or）
+
+- 电商短链次卡：管理台生成/作废短链；`/or/a/{token}` 打开短链后免登录做 1 次需求分析（不扣钱包）；小红书回调 `POST /commerce/channels/xhs/notify` 幂等出链；迁移 dev `c1d2e3f4a5b6`、pro `c1d2e3f4a5b7`。环境变量 `HIPP_OR_ACCESS_BASE`、`HIPP_XHS_*`。见 `doc/01-or/【电商履约】多渠道短链次卡.md`、`study/配置信息/小红书千帆-成都智臻善算/`。
+- 管理端「电商履约 → 渠道订单」流水：状态已支付 / 已核销 / 已退费；咨询完成核销；管理端退费作废短链（资金在千帆）；迁移 dev `d2e3f4a5b6c7`、pro `d2e3f4a5b6c8`。
+- 管理端「线下出链」：一键生成 1 次需求分析短链（`channel=offline`、已支付），便于线下收款后交付；接口 `POST /vadmin/commerce/orders/offline`。
+- 2026-10-16 现网 hipp.site：已同步 API/web/admin，迁移至 pro `a1627d741ce8`（含电商表）；`HIPP_OR_ACCESS_BASE=http://hipp.site/or/a`；`HIPP_XHS_*` 未配，千帆联调待后续。
+- 次卡短链交互：布局对齐分享页（无新会话/归档/分享）；完成后同一链接自动只读可转发；`GET /commerce/access/{token}` 在 used 时返回正文。
+- 管理端次卡短链：短链基址 https；状态/渠道中文；操作「复制链接 / 退费」；Table 列 slots 修复；退费同步订单已退费。
+- 余额不足提示前移：建会话（`POST /sessions`）与空草稿预检（`GET /session-fee-precheck`）即返回 `46005` 并引导 `/wallet`，避免写完长文再失败；发消息仍保留校验。见 `doc/02-dr/06 Web端/个人资金账户设计.md`。
+- 修复：Word 等附件上传成功后界面只显示「发送失败」——业务错误码 `46005` 余额不足 / `46006` 扣费预检失败；WS 透传 `code`；Web 按码展示并跳转 `/wallet`。全局范式见 `.cursor/rules/rules-api-error-codes.mdc`。见 `doc/91-qa/【Web对话】附件上传成功但消息显示发送失败.md`、`doc/02-dr/04 小程序对话/mp_chat业务错误码.md`。
+- hipp-web：深度思考标题显示用时，进行中为「深度思考中...(12.7s)」，结束后保留「深度思考 (13s)」；历史无本轮计时不显示秒数。见 `doc/01-or/【Web端】用户对话与场景咨询.md`。
+- hipp-web 首版隐藏「商业评估」入口：侧栏只保留「需求」；`/business` 重定向到 `/requirement`。开关 `SHOW_BUSINESS_SCENE`（`hipp-web/src/config/features.js`）可恢复。见 `doc/01-or/【Web端】用户对话与场景咨询.md`。
+- hipp-web：暂隐藏对话输入区「语音输入」麦克风按钮（`voiceInputEnabled = false`）；附件上传不受影响。现网已同步 `hipp-web` 静态。
+
+## 2026-10-15（hipp-or）
+
+- 修复：助手「正在回复…」与用户「发送中」叠显——乐观占位出现即标已发送，界面层也屏蔽同屏「发送中」。见 `doc/91-qa/【Web对话】回复已返回时用户消息仍显示发送中.md`。
+- 媒体清理：待发取消调 `DELETE /mp/chat/upload` 删盘；全站孤儿 GC：每日约 03:00（`HIPP_OR_MEDIA_GC*`）。**结题不再删除消息 attachments 媒体**（修复历史/分享裂图）。manager：`DELETE /api/media`、`POST /api/s2s/media/delete`、`/api/s2s/media/gc`。
+- 对话附件上传改走 hipp-manager 公共媒体（`POST /api/media/upload` → `/media/...`），修复生产 OSS 占位配置导致 `bucket.endpoint` 解析失败；门面仍为 `POST /mp/chat/upload`。见多模态 OR/DR 与 manager `【平台】公共媒体上传与访问`。
+- 修复：管理端侧栏「智能客服」菜单丢失——上线人客服时误用 `/mp-staff` 覆盖了 `asyncRouterMap` 的 `/agent`；已恢复与人工客服、计费并存。见 `doc/91-qa/【管理后台】智能客服菜单被人工客服路由覆盖.md`。
+- 对话多模态：`POST /mp/chat/upload`（平台媒体）、`POST /mp/chat/audio-to-text`；发送 blocking/SSE/WS 支持 `files`（优先 Dify `remote_url`）；消息表 `attachments`（迁移 dev `a9b0c1d2e3f4`、pro `a9b0c1d2e3f5`）；合计 &lt;20MB、单图≤10MB、单文档≤15MB、最多 3 个。hipp-web / hipp-uni 输入区附件与语音转写；Web 输入区支持粘贴/拖拽入附。Dify 导出 yml 已开 file_upload/vision/STT（控制台须同步发布）。见 `doc/01-or/【对话】多模态附件与语音输入.md`。
+- 修复：`/chat/:id` 话题结束后续开会新建会话但地址栏仍停在旧 id——改为 `replace` 到新 id，同 id 不重复加载。场景页不再复用「已扣费且无消息」的空壳，解析/新建时软删此类遗留会话。见 `doc/91-qa/【Web对话】话题续开URL未更新与已扣费空会话复用.md`。
+- 修复：已登录访问 `/or/manager/` 落到 `/404`——根路由误重定向到已下线的 `/dashboard/analysis`，改为 `/dashboard/workplace`。见 `doc/91-qa/【管理后台】根路径重定向到已移除的analysis导致404.md`。
+- 会话费率与扣费：管理端侧栏「计费配置」；**话题结束**时 S2S 扣费（`consume_session`）；发消息前余额校验；已结束未扣费打开详情补扣；`/wallet` 流水与充值单默认 `product=or`。方案见 `doc/02-dr/05 系统管理/会话费率配置与扣费实施方案.md`。
+- 需求/商业场景页：话题结束后右上角展示分享与归档（与独立会话页一致）。
+- `/wallet` 交易流水：展示会话标题，隐藏产品列（本产品页隐含 or）。
+
+
+- 产品码 `or` + 平台管理员：充值/短信登录带 `product=or`；管理端密码登录优先校验 hipp-manager ops，失败回落本地；在线校验兼容 ops 令牌（`/api/ops/auth/me`）。
+- hipp-admin / hipp-api：会话咨询费用配置——全局默认金额 + 按用户搜索设定/清除专属；接口 `/vadmin/billing/session-fee/*`；管理页 `views/Vadmin/Billing/SessionFee`（菜单 `/billing/session-fee`）。迁移 dev `e7f8a9b0c1d2`、pro `e7f8a9b0c1d3`。见 `doc/01-or/【管理后台】会话咨询费用配置.md`。
+- hipp-web / hipp-api：个人资金账户——`/wallet` 余额、充值（支付码弹窗）、充值订单与流水；后端 `/wallet/*` 透传 hipp-manager。资料层入口「账户余额」。会话扣费按配置解析金额另交付。见 `doc/01-or/【Web端】个人资金账户充值与订单.md`。
+- 侧栏与登录页品牌文案不再跳转公司首页；「联系我们」弹窗仍含备案号等公司信息，并按需求端黄铜风格重排。
+- 修复：生产 `/or/` 空白页——构建须用 `VITE_BASE_PATH=/or/`（误用 `VITE_BASE` 时资源落到 `/assets/`）。见 `doc/91-qa/【Web端】子路径构建变量错误导致空白页.md`。
+- 业务鉴权二次校验 manager：登录/SSO 服务端缓存 `manager_token`；需鉴权接口（含 WS）向 manager `/me` 校验在线（短缓存）。`mp_guest`/纯微信会话跳过。配置了 `HIPP_MANAGER_BASE` 时管理端密码登录也必须拿到 manager 令牌。
+
+## 2026-10-14（hipp-or）
+
+- 同站登录态互通：用户侧与管理端登录回写 `manager_token`；`POST /auth/sso`；hipp-web / hipp-admin 启动换票。与 `/mgr/`、`/cert/`、`/vf/` 免重复登录。
+- hipp-web：最近列表、归档列表和已打开话题上的「分享」「复制链接」「停止分享」改为图标。悬停或键盘聚焦显示操作名称，点击行为不变。列表里的图标按钮收成一组，组内间距小于标题和按钮组之间的空隙。见 `doc/01-or/【Web对话】消息时间与归档分享.md`。
+
+## 2026-10-13（hipp-or）
+
+- hipp-web / hipp-api：会话消息展示日期时间。已完成话题可分享，不必先归档；已分享的只复制原链接，并可停止分享。链接免登录只读，页面只有聊天内容和「联系我们」。会话表增加 `share_token`（迁移 dev `d5e6f7a8b9c1`、pro `d5e6f7a8b9c2`）。见 `doc/01-or/【Web对话】消息时间与归档分享.md`。
+
+- hipp-web：重做图标、按钮和界面样式。导航、新会话、归档、联系我们、发送和资料行改为统一线性图标；主按钮为黄铜实心，次按钮用浅底填充，不再加描边。没有自选头像，或仍是系统占位图时，侧栏和资料层显示姓氏圆印。业务流程不变。见 `doc/01-or/【Web端】用户对话与场景咨询.md`。
+
+## 2026-10-11（hipp-or）
+
+- hipp-web / hipp-api：会话标题改为大模型概括，不再把用户原文开头截成标题。仍是原文开头的旧标题会在打开列表时改写。「最近」下增加「归档」，归档后可看到时间、标题和 token 消耗。会话表增加 `is_archived`、`token_usage`（迁移 dev `c4d5e6f7a8b1`、pro `c4d5e6f7a8b2`）。见 `doc/01-or/【Web端】用户对话与场景咨询.md`。
+- hipp-web / hipp-api：长回复不再被浏览器 90 秒总超时掐断。持续有数据时保持连接，5 分钟无新数据或整段超过 20 分钟才超时。转给 Dify 的读取等待改为 15 分钟。已经输出的正文不再改走同步请求并盖成失败。见 `doc/91-qa/【Web对话】深度思考回复被90秒超时掐断.md`。
+- hipp-web：助手回复一开始出现，用户消息就不再显示「发送中」，不必等整段生成结束。见 `doc/91-qa/【Web对话】回复已返回时用户消息仍显示发送中.md`。
+- hipp-web：助手回复中的深度思考改为中文标题「深度思考」，默认收起，点击后展开；思考未结束时标题为「深度思考中」。不再把英文 think 标签摊在正文里。见 `doc/01-or/【Web端】用户对话与场景咨询.md`、`doc/02-dr/06 Web端/Web用户端设计.md`。
+- hipp-web / hipp-api：未结束的会话也可以新开一条；有用户或助手消息的会话留在「最近」，空草稿不列出。未归档会话也会生成短标题（Dify 会话名，否则首条用户问题），不用最新一句原话。助手回复在页面上逐字出现并带光标。`GET /mp/chat/inbox?kind=session&include_open=1` 仅 Web 使用，小程序收件箱仍只返回已归档话题。见 `doc/01-or/【Web端】用户对话与场景咨询.md`、`doc/02-dr/06 Web端/Web用户端设计.md`。
+
+## 2026-10-10（hipp-or）
+
+- **hipp-web**：话题结束后的按钮改为「联系我们」，点击弹出关于我们。点「需求」或「商业」时，另一侧的最近会话清单收起。
+- **hipp-web**：「需求」「商业」菜单下各自列出最近会话，每条归档单独一行。去掉接待和客户对话。头像下方增加「联系我们」，点击只弹出关于我们。
+
+- **hipp-web**：站点默认进登录页，已登录进需求会话。会话页左侧「最近」下列归档会话。去掉首页和「我的」菜单；品牌改为「需求 / 智臻善算」，链到 `http://hipp.site/`。资料在头像层就地展开，关于我们弹窗对齐成都智臻善算科技有限公司信息。
+
+## 2026-10-09（hipp-or）
+
+- **hipp-web**：新增浏览器用户端（Vue 3）。覆盖首页、短信/密码登录、归档话题、流式对话、需求与商业场景、资料/密码/关于。接口复用 `/auth` 与 `/mp/chat`，开发时由 Vite 将 `/api` 反代到 `127.0.0.1:46000`。见 `doc/01-or/【Web端】用户对话与场景咨询.md`、`doc/02-dr/06 Web端/Web用户端设计.md`。
+
 ## 2026-04-09（hipp-or）
 
+- **修复（hipp-api / Alembic）**：补全缺失修订 `04bbb43d68dc` 占位脚本，并将 `c146cc30b075` 的 `down_revision` 与其衔接，避免已有 `alembic_version=04bbb43d68dc` 的环境报 `Can't locate revision`。见 `doc/91-qa/【数据库迁移】alembic_version缺失修订04bbb43d68dc.md`。
+- **修复（hipp-api）**：`GET /vadmin/auth/user/admin/current/info` 在员工用户**未分配角色**时不再因 `max()` 空序列异常导致无效响应；无角色时数据范围按「仅本人」处理。见 `doc/91-qa/【登录认证】当前用户信息无角色时接口max空序列.md`。
+- **hipp-admin（体验）**：`GET /auth/getMenuList` 未返回成功数据时进入 `/no-access` 说明页，可「退出并更换账号」；抽取 `loadDynamicMenuRoutes` 供登录与路由守卫共用；404 页在已登录时增加「退出系统」。见 `doc/01-or/【管理后台】无权限与菜单失败说明页及退出换账号.md`。
+- **修复（小程序）**：短信/密码登录写入 `SET_TELEPHONE`；改密成功后先 `Login` 换新 JWT 再 `switchTab` 进首页，避免无手机号跳过 `Login`、旧 token 与库不一致导致反复进改密页。
+- **需求 + 实现**：短信验证码**首次自动注册**用户设置登录密码时识别「无当前密码」：`must_set_password_without_old` 字段、登录/刷新 token 返回标志、重置密码接口在该场景跳过旧密码校验；管理端批量初始化密码时清除该标志。小程序改密页条件隐藏「当前密码」。迁移 `b3c4d5e6f7a8`（dev）/`b3c4d5e6f7a9`（pro）。
 - **修复（启动）**：`run.sh` 将 `No module named 'application.database_url'` 误判为「数据库未配置」的问题——现 `export PYTHONPATH` 包含项目根、内嵌 Python 强制 `HIPP_RUN_ROOT` 与脚本目录一致、区分导入错误与连接串缺失；新增 `application/__init__.py`。见 `doc/91-qa/【启动】run.sh误报数据库配置与application.database_url缺失.md`。
 - **需求变更 + 实现**：小程序去掉微信登录；默认改为手机号 + 短信验证码登录；验证码校验通过后若手机号不存在则自动创建账号。`POST /auth/sms/send` 发码（不要求已注册）；`POST /auth/login` 在 `platform=1` 且 `method=1` 时先验码再登录/建号。见 `hipp-uni/pages/login/login.vue`、`hipp-api/apps/vadmin/auth/utils/login.py`、`login_manage.py`、`crud.py`；设计见 `doc/01-or/【小程序登录】登录功能.md` 等。
+- **小程序登录页**：用户协议、隐私政策改为**内置文案 + 弹窗滚动阅读**（滚动到底后方可确认返回），不再使用 webview 跳转外部 URL。文案见 `doc/99-ops/luo/*.txt` 与 `hipp-uni/common/legal/static-texts.js`。
+- **小程序登录页**：协议首次确认后**本地缓存**已读状态，再次打开同一协议仅显示「返回」；两项均确认后**自动勾选**同意（用户可手动取消；取消后本页不再自动勾选直至再次完成弹窗确认）。
 
 ## 2026-04-08（hipp-or）
 

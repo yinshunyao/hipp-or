@@ -30,6 +30,7 @@
 | B09 | 上架（测试未通过） | is_tested=False | PUT /vadmin/agent/agents/{id}/publish | 返回错误：需先通过测试 | pytest |
 | B10 | 下架 | status=published | PUT /vadmin/agent/agents/{id}/unpublish | status=draft | pytest |
 | B11 | 软删除 | 记录存在 | DELETE /vadmin/agent/agents，body: [id] | is_delete=True，列表不再展示 | pytest |
+| F01 | 管理端菜单 | 已登录管理员 | 打开 `/or/manager/` 侧栏 | 可见「智能客服」→「智能客服管理」，可进入列表 | 手工 |
 
 ## 前端页面测试
 
