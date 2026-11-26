@@ -9,6 +9,7 @@ const businessRoute = SHOW_BUSINESS_SCENE
 const routes = [
   { path: '/', name: 'entry', component: { render: () => null } },
   { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue') },
+  { path: '/faq', name: 'faq', component: () => import('@/views/FaqView.vue') },
   { path: '/share/:token', name: 'share', component: () => import('@/views/ShareView.vue') },
   { path: '/a/:token', name: 'access', component: () => import('@/views/AccessView.vue') },
   { path: '/legal/:kind', name: 'legal', component: () => import('@/views/LegalView.vue') },

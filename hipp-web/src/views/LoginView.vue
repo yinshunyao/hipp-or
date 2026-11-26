@@ -2,8 +2,45 @@
   <div class="login">
     <section class="story">
       <span class="mark">需求</span>
+      <p class="eyebrow">{{ geoPublic.companyShort }} · {{ geoPublic.displayName }}</p>
       <h1>把需求说清楚，<br />再谈怎么做。</h1>
-      <p>短信或密码登录后，即可进入需求会话。协议内容与小程序一致。</p>
+      <p class="one-liner">{{ geoPublic.oneLiner }}</p>
+      <p class="entry">官方入口 {{ geoPublic.canonicalUrl }}</p>
+
+      <div class="adv-block">
+        <h2>为什么选它</h2>
+        <ul>
+          <li v-for="(item, i) in geoPublic.advantages" :key="i">
+            <strong>{{ item.title }}</strong>
+            <span>{{ item.text }}</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="shot-block">
+        <figure v-for="(shot, i) in loginShots" :key="i">
+          <img :src="geoAsset(shot.src)" :alt="shot.alt" loading="lazy" />
+          <figcaption><em>{{ shot.proves }}</em> — {{ shot.caption }}</figcaption>
+        </figure>
+      </div>
+
+      <div class="faq-block">
+        <div class="faq-head">
+          <h2>常见问题</h2>
+          <RouterLink class="faq-link" to="/faq">查看 FAQ 与更多截图</RouterLink>
+        </div>
+        <details v-for="(item, i) in geoPublic.faqItems.slice(0, 4)" :key="i" class="faq-item" :open="i === 0">
+          <summary>{{ item.q }}</summary>
+          <p>{{ item.a }}</p>
+        </details>
+      </div>
+
+      <div class="bounds">
+        <h3>不做</h3>
+        <ul>
+          <li v-for="(line, i) in geoPublic.doNotClaim" :key="i">{{ line }}</li>
+        </ul>
+      </div>
     </section>
     <section class="panel">
       <span class="back">智臻善算</span>
@@ -61,10 +98,13 @@
 </template>
 
 <script setup>
-import { nextTick, onBeforeUnmount, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { sendLoginSms } from '@/api/auth'
 import Icon from '@/components/Icon.vue'
+import { faqJsonLd, geoAsset, geoPublic } from '@/data/geoPublic'
+
+const loginShots = geoPublic.shots.slice(0, 2)
 import { legalDoc } from '@/data/legal'
 import { useAuthStore } from '@/stores/auth'
 import { toast } from '@/utils/toast'
@@ -86,6 +126,19 @@ const declined = ref(false)
 const sheet = ref(null)
 const legalBox = ref(null)
 let timer = 0
+let ldScript = null
+
+onMounted(() => {
+  ldScript = document.createElement('script')
+  ldScript.type = 'application/ld+json'
+  ldScript.id = 'hipp-or-faq-ld'
+  ldScript.textContent = JSON.stringify(faqJsonLd())
+  document.head.appendChild(ldScript)
+})
+onBeforeUnmount(() => {
+  if (timer) window.clearInterval(timer)
+  if (ldScript && ldScript.parentNode) ldScript.parentNode.removeChild(ldScript)
+})
 
 function readFlags() {
   try { return JSON.parse(localStorage.getItem(KEY) || '{}') } catch (err) { return {} }
@@ -156,13 +209,12 @@ async function submit() {
     busy.value = false
   }
 }
-onBeforeUnmount(() => { if (timer) window.clearInterval(timer) })
 </script>
 
 <style scoped>
-.login { min-height: 100vh; display: grid; grid-template-columns: 1.05fr 0.95fr; }
+.login { min-height: 100vh; display: grid; grid-template-columns: 1.15fr 0.85fr; }
 .story {
-  padding: 48px 8vw;
+  padding: 36px 6vw 40px;
   color: #f4efe6;
   background:
     linear-gradient(rgba(244, 239, 230, 0.045) 1px, transparent 1px),
@@ -172,7 +224,8 @@ onBeforeUnmount(() => { if (timer) window.clearInterval(timer) })
   background-size: 28px 28px, 28px 28px, auto, auto;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  overflow: auto;
+  max-height: 100vh;
 }
 .mark {
   align-self: flex-start; width: max-content;
@@ -180,11 +233,59 @@ onBeforeUnmount(() => { if (timer) window.clearInterval(timer) })
   background: radial-gradient(circle at 32% 28%, #3d5366, #15202a 72%);
   box-shadow: inset 0 0 0 1px rgba(230, 201, 138, 0.28);
   color: white; text-decoration: none; font-family: var(--serif); font-size: 16px;
-  margin-bottom: auto;
+  margin-bottom: 20px;
 }
-.story h1 { font-family: var(--serif); font-size: clamp(36px, 4vw, 58px); line-height: 1.15; margin: 0 0 12px; }
-.story p { max-width: 28rem; color: #d5dde4; }
-.panel { padding: 48px 8vw; display: flex; flex-direction: column; gap: 14px; background: var(--paper); }
+.eyebrow { margin: 0 0 8px; color: #b8c2cc; font-size: 13px; letter-spacing: 0.02em; }
+.story h1 { font-family: var(--serif); font-size: clamp(32px, 3.6vw, 52px); line-height: 1.15; margin: 0 0 12px; }
+.one-liner { max-width: 34rem; color: #d5dde4; margin: 0 0 8px; line-height: 1.65; }
+.entry { margin: 0 0 18px; color: #9aa7b3; font-size: 13px; }
+.adv-block { margin-bottom: 16px; }
+.adv-block h2 { font-family: var(--serif); font-size: 18px; margin: 0 0 8px; font-weight: 650; }
+.adv-block ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.adv-block li {
+  padding: 10px 12px; border-radius: 10px;
+  background: rgba(244, 239, 230, 0.06);
+  border: 1px solid rgba(244, 239, 230, 0.1);
+  display: grid; gap: 4px;
+}
+.adv-block strong { font-size: 14px; color: #f4efe6; }
+.adv-block span { font-size: 13px; color: #b8c2cc; line-height: 1.55; }
+.shot-block { display: grid; gap: 12px; margin-bottom: 16px; }
+.shot-block figure { margin: 0; }
+.shot-block img {
+  display: block; width: 100%; border-radius: 10px;
+  border: 1px solid rgba(244, 239, 230, 0.12);
+}
+.shot-block figcaption { margin-top: 6px; font-size: 12px; color: #9aa7b3; line-height: 1.5; }
+.shot-block em { font-style: normal; color: #e6c98a; font-weight: 650; }
+.faq-block { margin-bottom: 18px; }
+.faq-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  margin-bottom: 8px;
+}
+.faq-head h2 { font-family: var(--serif); font-size: 20px; margin: 0; font-weight: 650; }
+.faq-link { color: #e6c98a; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
+.faq-item {
+  border-top: 1px solid rgba(244, 239, 230, 0.12);
+  padding: 10px 0;
+}
+.faq-item summary {
+  cursor: pointer; list-style: none; font-weight: 600; line-height: 1.45;
+}
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item p { margin: 8px 0 0; color: #c5ced6; font-size: 14px; line-height: 1.65; }
+.bounds {
+  margin-top: auto; padding: 14px 14px 12px; border-radius: 12px;
+  background: rgba(244, 239, 230, 0.06);
+  border: 1px solid rgba(244, 239, 230, 0.1);
+}
+.bounds h3 { margin: 0 0 8px; font-size: 14px; color: #e6c98a; font-weight: 650; }
+.bounds ul { margin: 0; padding-left: 1.15em; color: #b8c2cc; font-size: 13px; line-height: 1.65; }
+.panel {
+  padding: 48px 8vw; display: flex; flex-direction: column; gap: 14px;
+  background: var(--paper); max-width: 520px; width: 100%; justify-self: stretch;
+  box-sizing: border-box;
+}
 .back { color: var(--text-3); text-decoration: none; }
 h2 { font-family: var(--serif); font-size: 36px; margin: 0; }
 .modes {
@@ -237,7 +338,7 @@ input:focus { box-shadow: 0 0 0 3px rgba(166, 124, 61, 0.18); }
 .sheet button:disabled { background: var(--paper-2); color: var(--text-3); }
 @media (max-width: 860px) {
   .login { grid-template-columns: 1fr; }
-  .story { min-height: 34vh; padding: 28px 20px; }
-  .panel { padding: 28px 20px 48px; }
+  .story { max-height: none; min-height: auto; padding: 28px 20px; }
+  .panel { padding: 28px 20px 48px; max-width: none; }
 }
 </style>

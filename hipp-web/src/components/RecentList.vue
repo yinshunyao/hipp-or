@@ -1,5 +1,14 @@
 <template>
-  <div class="recent" :class="{ row }">
+  <div
+    ref="rootEl"
+    class="recent"
+    :class="{ row }"
+    @scroll="onScroll"
+    @pointerdown="onPointerDown"
+    @pointermove="onPointerMove"
+    @pointerup="onPointerUp"
+    @pointercancel="onPointerCancel"
+  >
     <p class="label">最近</p>
     <button v-if="creatable" class="create" type="button" @click="$emit('create')">
       <Icon name="plus" />
@@ -11,7 +20,7 @@
       :key="item.id"
       class="item"
       :class="{ on: item.id === activeId }"
-      @click="$emit('open', item)"
+      @click="openItem(item)"
     >
       <span class="name">{{ item.title }}</span>
       <span class="acts" @click.stop>
@@ -52,7 +61,7 @@
         :key="item.id"
         class="item filed"
         :class="{ on: item.id === activeId }"
-        @click="$emit('open', item)"
+        @click="openItem(item)"
       >
         <span class="name">{{ item.title }}</span>
         <span class="meta">{{ item.when }} · {{ item.tokensLabel }}</span>
@@ -83,18 +92,42 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import Icon from '@/components/Icon.vue'
+import { useScrollTapGuard } from '@/composables/useScrollTapGuard'
 
-defineProps({
+const props = defineProps({
   items: { type: Array, default: () => [] },
   archiveItems: { type: Array, default: () => [] },
   activeId: { type: Number, default: 0 },
   row: { type: Boolean, default: false },
   creatable: { type: Boolean, default: false }
 })
-defineEmits(['open', 'create', 'file', 'share', 'unshare'])
+const emit = defineEmits(['open', 'create', 'file', 'share', 'unshare'])
 const archiveOpen = ref(false)
+const rootEl = ref(null)
+
+const rowMode = computed(() => props.row)
+const {
+  bindScrollContainer,
+  onScroll,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+  runTapAction
+} = useScrollTapGuard(rowMode)
+
+onMounted(() => {
+  bindScrollContainer(rootEl.value)
+})
+watch(rowMode, () => {
+  bindScrollContainer(rootEl.value)
+})
+
+function openItem(item) {
+  runTapAction(() => emit('open', item))
+}
 </script>
 
 <style scoped>
@@ -196,7 +229,14 @@ const archiveOpen = ref(false)
 .filed .acts { align-self: flex-start; }
 .stop { color: rgba(244, 239, 230, 0.55); }
 .stop:hover, .stop:focus-visible { color: #fff; }
-.row { flex-direction: row; align-items: center; gap: 8px; overflow-x: auto; }
+.row {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
 .row .label { margin: 0 4px 0 0; flex: none; color: var(--text-3); }
 .row .empty { margin: 0; color: var(--text-3); flex: none; }
 .row .item, .row .folder, .row .create {

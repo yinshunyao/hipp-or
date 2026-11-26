@@ -16,7 +16,15 @@
       @change="onSearchChange"
       @search="loadInbox"
     />
-    <scroll-view scroll-y class="list-wrap">
+    <scroll-view
+      scroll-y
+      class="list-wrap"
+      @scroll="onListScroll"
+      @touchstart="onListTouchStart"
+      @touchmove="onListTouchMove"
+      @touchend="onListTouchEnd"
+      @touchcancel="onListTouchEnd"
+    >
       <view v-if="loading" class="hint">
         <view class="hint-dot"></view>
         <text class="hint-text">加载中...</text>
@@ -28,7 +36,10 @@
         v-for="(row, idx) in items"
         :key="idx"
         class="row"
-        @click="onRowTap(row)"
+        @touchstart="onRowTouchStart"
+        @touchmove="onRowTouchMove"
+        @touchend="onRowTouchEnd($event, row)"
+        @touchcancel="onRowTouchEnd($event, row)"
         @longpress="onRowLongPress(row)"
       >
         <view
@@ -80,9 +91,10 @@
 <script>
 import { getChatInbox, getStaffChatInbox, patchChatSession, deleteChatSession } from '@/common/request/api/mp/chat.js'
 import { themeMixin } from '@/common/mixins/theme.js'
+import scrollTapGuardMixin from '@/common/mixins/scroll-tap-guard.js'
 
 export default {
-  mixins: [themeMixin],
+  mixins: [themeMixin, scrollTapGuardMixin],
   data() {
     return {
       keyword: '',
@@ -183,7 +195,11 @@ export default {
       }
       return null
     },
-    async onRowTap(row) {
+    onRowTouchEnd(e, row) {
+      this.onListTouchEnd(e)
+      this._releaseListTapAction(() => this._openChatRow(row))
+    },
+    _openChatRow(row) {
       const sid = row && row.session && row.session.id
       if (!sid) {
         uni.showToast({ title: '会话参数缺失', icon: 'none' })
@@ -198,6 +214,7 @@ export default {
       try { uni.setStorageSync('last_active_session_id', String(sid)) } catch (e) {}
     },
     onRowLongPress(row) {
+      this._markListLongPress()
       if (this.isHumanStaff) return
       this.onRowLong(row)
     },

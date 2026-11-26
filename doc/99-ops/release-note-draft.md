@@ -1,5 +1,10 @@
 # 发布草稿（kinit）
 
+## 2026-10-17（hipp-or）
+
+- hipp-web GEO：登录页左栏增加智能需求分析实体句、FAQ、「不做」边界；新增公开路由 `/faq` 与静态 `faq.html`（含 FAQPage JSON-LD）；`index.html` 补充 description。现网已同步 `/data/or/hipp-web`。见 `doc/01-or/【Web端】登录页GEO公开信息与FAQ.md`。
+- FAQ/登录公开区增强：四条优势、「为什么选它」；截图（会话/追问/三档/里程碑）挂 `public/geo/`；全局规则 `rules-geo-public-advantages.mdc`。
+
 ## 2026-10-16（hipp-or）
 
 - 电商短链次卡：管理台生成/作废短链；`/or/a/{token}` 打开短链后免登录做 1 次需求分析（不扣钱包）；小红书回调 `POST /commerce/channels/xhs/notify` 幂等出链；迁移 dev `c1d2e3f4a5b6`、pro `c1d2e3f4a5b7`。环境变量 `HIPP_OR_ACCESS_BASE`、`HIPP_XHS_*`。见 `doc/01-or/【电商履约】多渠道短链次卡.md`、`study/配置信息/小红书千帆-成都智臻善算/`。
